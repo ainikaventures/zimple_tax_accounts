@@ -1,26 +1,34 @@
+/* app/globals.css — Tailwind v4 entry point and editorial design tokens.
+ *
+ * Defines the project palette (ink, paper, burgundy accent, muted grey) and font
+ * variables that are wired up in app/layout.tsx (Source Serif 4 for display,
+ * IBM Plex Sans for body). All component styling must pull from these tokens —
+ * never hardcode colours or fonts in component files. */
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-ink: #1a1715;
+  --color-paper: #faf7f2;
+  --color-accent: #7a1f2b;
+  --color-accent-deep: #5e1620;
+  --color-muted: #6b6660;
+  --color-rule: #d9d4cb;
+
+  --font-serif: var(--font-serif-display), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-sans-body), system-ui, -apple-system, Helvetica, Arial, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-paper);
 }

@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# uk-tax-advisor
 
-## Getting Started
+Open-source UK personal income tax web app. Upload your bank statements, get
+an accurate tax calculation, see personalised tax-saving suggestions, chat
+with an AI agent about UK tax rules, and export filing-ready Excel and JSON.
 
-First, run the development server:
+> **Status: under construction.** Functionality lands progressively per the
+> sprint plan in [`info/PROJECT_BRIEF.md`](./info/PROJECT_BRIEF.md). A full
+> README — quick start, screenshots, configuration — is written in Sprint 12.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Privacy in one paragraph
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Bank statements are parsed entirely in your browser and never uploaded.
+Calculation runs in your browser. The only network call that includes any
+of your data is to the AI agent endpoint, and only if you choose to open the
+chat. Full details will live in `docs/PRIVACY.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Disclaimer
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This is **not** regulated financial advice. The numbers it produces are
+estimates and may be wrong for your specific circumstances. You remain
+responsible for your own tax filings — verify with HMRC or a chartered tax
+adviser before submitting anything.
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
+[GNU Affero General Public License v3.0 or later](./LICENSE).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Source
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+<https://github.com/ainikaventures/zimple_tax_accounts>
