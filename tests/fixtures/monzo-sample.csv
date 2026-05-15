@@ -1,0 +1,10 @@
+Transaction ID,Date,Time,Type,Name,Category,Amount,Description,Balance
+tx_001,01/05/2025,09:00,Faster payment,Acme Salary,Income,2800.00,Net pay May,4500.00
+tx_002,03/05/2025,14:30,Card payment,Tesco,Groceries,-65.40,Weekly shop,4434.60
+tx_003,05/05/2025,10:00,Standing order,Vanguard SIPP,Pension,-200.00,SIPP monthly contribution,4234.60
+tx_004,08/05/2025,16:15,Standing order,"Just Giving, Oxfam",Charity,-25.00,Monthly donation,4209.60
+tx_005,10/05/2025,12:00,Card payment,Amazon,Shopping,-29.99,Book purchase,4179.61
+tx_006,15/05/2025,08:00,Bank transfer,HSBC Savings,Income,12.50,Credit interest paid,4192.11
+tx_007,16/05/2025,09:00,Bank transfer,ABC plc Dividend,Income,75.00,Q2 dividend payment,4267.11
+tx_008,20/05/2025,11:00,Faster payment,Tenant Smith,Income,800.00,Rent for May,5067.11
+tx_009,25/05/2025,18:00,Faster payment,XYZ Holdings,Income,1500.00,Large incoming,6567.11

@@ -1,0 +1,8 @@
+Date,Counter Party,Reference,Type,Amount (GBP),Balance (GBP),Spending Category
+04/05/2025,Acme Ltd,Salary May 2025,FASTER PAYMENT,2750.00,4750.00,Income
+06/05/2025,M&S,Groceries,CARD PAYMENT,-45.20,4704.80,Groceries
+07/05/2025,Nest Pension,Workplace pension scheme,DIRECT DEBIT,-250.00,4454.80,Pension
+09/05/2025,Cancer Research UK,Monthly donation,DIRECT DEBIT,-15.00,4439.80,Charity
+14/05/2025,Starling Bank,Credit interest May,INTEREST,8.75,4448.55,Savings
+17/05/2025,Brokerage Ltd,Quarterly dividend payment,FASTER PAYMENT,55.00,4503.55,Investments
+22/05/2025,Property Tenant,Rental income May,FASTER PAYMENT,900.00,5403.55,Income
