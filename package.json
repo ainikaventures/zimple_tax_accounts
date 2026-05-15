@@ -20,7 +20,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx tests/*.test.ts",
+    "test": "for f in tests/*.test.ts; do echo \"\\n→ $f\"; tsx \"$f\" || exit 1; done",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
