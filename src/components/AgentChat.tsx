@@ -10,10 +10,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentSettings } from "@/src/components/AgentSettings";
 import {
   loadAgentConfig,
+  MANAGED_MODE,
   modelFor,
   PROVIDERS,
   providerReady,
   streamChat,
+  streamManagedChat,
   type AgentClientConfig,
   type ProviderKey,
 } from "@/src/lib/agentClient";
@@ -55,19 +57,34 @@ export function AgentChat({ context }: AgentChatProps) {
     }
   }, [messages, streamingText, open]);
 
-  const ready = config ? providerReady(config) : false;
-  const activeModel = config ? modelFor(config) : "—";
-  const activeLabel = config ? PROVIDERS[config.activeProvider].label : "—";
+  const ready = MANAGED_MODE
+    ? true
+    : config
+      ? providerReady(config)
+      : false;
+  const activeModel = MANAGED_MODE
+    ? "claude-sonnet-4-5"
+    : config
+      ? modelFor(config)
+      : "—";
+  const activeLabel = MANAGED_MODE
+    ? "Claude (hosted)"
+    : config
+      ? PROVIDERS[config.activeProvider].label
+      : "—";
 
   const send = useCallback(
     async (text: string) => {
-      if (!config || !text.trim() || streaming) return;
-      if (!providerReady(config)) {
-        setError(
-          `Add a ${PROVIDERS[config.activeProvider].label} key in settings to start chatting.`,
-        );
-        setSettingsOpen(true);
-        return;
+      if (!text.trim() || streaming) return;
+      if (!MANAGED_MODE) {
+        if (!config) return;
+        if (!providerReady(config)) {
+          setError(
+            `Add a ${PROVIDERS[config.activeProvider].label} key in settings to start chatting.`,
+          );
+          setSettingsOpen(true);
+          return;
+        }
       }
       const userMsg: AgentMessage = { role: "user", content: text };
       const nextHistory = [...messages, userMsg].slice(-UI_HISTORY_LIMIT);
@@ -79,7 +96,9 @@ export function AgentChat({ context }: AgentChatProps) {
 
       let acc = "";
       try {
-        const stream = streamChat(config, context, messages, text);
+        const stream = MANAGED_MODE
+          ? streamManagedChat(context, messages, text)
+          : streamChat(config!, context, messages, text);
         for await (const chunk of stream) {
           acc += chunk;
           setStreamingText(acc);
@@ -154,7 +173,12 @@ export function AgentChat({ context }: AgentChatProps) {
               <p className="font-serif text-base text-ink leading-tight">
                 Tax assistant
               </p>
-              {config && (
+              {MANAGED_MODE ? (
+                <p className="mt-1 text-[11px] text-muted">
+                  Powered by{" "}
+                  <span className="font-mono">{activeModel}</span> · hosted
+                </p>
+              ) : config ? (
                 <label className="mt-1 inline-flex items-center gap-2 text-[11px] text-muted">
                   <select
                     value={config.activeProvider}
@@ -181,18 +205,20 @@ export function AgentChat({ context }: AgentChatProps) {
                     aria-label={ready ? "Provider ready" : "Provider needs a key"}
                   />
                 </label>
-              )}
+              ) : null}
             </div>
             <div className="flex items-center gap-1 -mt-1">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className="text-muted hover:text-ink p-1"
-                aria-label="Open agent settings"
-                title="Settings"
-              >
-                ⚙
-              </button>
+              {!MANAGED_MODE && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="text-muted hover:text-ink p-1"
+                  aria-label="Open agent settings"
+                  title="Settings"
+                >
+                  ⚙
+                </button>
+              )}
               <button
                 type="button"
                 onClick={clearChat}
@@ -217,7 +243,7 @@ export function AgentChat({ context }: AgentChatProps) {
             ref={scrollRef}
             className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
           >
-            {config && !ready && (
+            {!MANAGED_MODE && config && !ready && (
               <UnavailableBanner
                 providerLabel={activeLabel}
                 onOpenSettings={() => setSettingsOpen(true)}
@@ -310,11 +336,13 @@ export function AgentChat({ context }: AgentChatProps) {
         </aside>
       )}
 
-      <AgentSettings
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onChange={(c) => setConfig(c)}
-      />
+      {!MANAGED_MODE && (
+        <AgentSettings
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onChange={(c) => setConfig(c)}
+        />
+      )}
     </>
   );
 }

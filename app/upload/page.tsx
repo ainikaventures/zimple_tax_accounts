@@ -22,7 +22,9 @@ import { detectCoverage } from "@/src/lib/taxYearCoverage";
 import {
   cleanExtractedCsv,
   extractTransactionsFromPdfText,
+  extractTransactionsManaged,
   loadAgentConfig,
+  MANAGED_MODE,
   modelFor,
   PROVIDERS,
   providerReady,
@@ -216,19 +218,23 @@ export default function UploadPage() {
   );
 
   const confirmPdfExtraction = useCallback(async () => {
-    if (!pendingPdf || !agentConfig) return;
+    if (!pendingPdf) return;
+    if (!MANAGED_MODE && !agentConfig) return;
     setExtractError(null);
-    setExtractStatus(
-      `Extracting transactions via ${PROVIDERS[agentConfig.activeProvider].label}…`,
-    );
+    const providerLabel = MANAGED_MODE
+      ? "Claude (hosted)"
+      : PROVIDERS[agentConfig!.activeProvider].label;
+    setExtractStatus(`Extracting transactions via ${providerLabel}…`);
     const filename = pendingPdf.filename;
     let accumulated = "";
     try {
-      const stream = extractTransactionsFromPdfText(
-        agentConfig,
-        pendingPdf.text,
-        filename,
-      );
+      const stream = MANAGED_MODE
+        ? extractTransactionsManaged(pendingPdf.text, filename)
+        : extractTransactionsFromPdfText(
+            agentConfig!,
+            pendingPdf.text,
+            filename,
+          );
       for await (const chunk of stream) {
         accumulated += chunk;
       }
@@ -258,7 +264,7 @@ export default function UploadPage() {
       setStatements((prev) => [
         ...prev,
         {
-          filename: `${baseLabel} (extracted from PDF via ${PROVIDERS[agentConfig.activeProvider].label})`,
+          filename: `${baseLabel} (extracted from PDF via ${providerLabel})`,
           format,
           rowCount: classified.length,
           uploadedAt: new Date().toISOString(),
@@ -386,11 +392,19 @@ export default function UploadPage() {
 
         <section className="mb-10">
           <FileDropzone onFiles={handleFiles} />
-          {agentConfig && (
-            <ProviderStatus
-              config={agentConfig}
-              onOpenSettings={() => setSettingsOpen(true)}
-            />
+          {MANAGED_MODE ? (
+            <p className="mt-3 text-xs text-muted leading-relaxed">
+              PDF extraction uses{" "}
+              <strong className="text-ink">Claude (hosted)</strong>. PDF
+              text leaves your browser for the server hosting this app.
+            </p>
+          ) : (
+            agentConfig && (
+              <ProviderStatus
+                config={agentConfig}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
+            )
           )}
           {extractStatus && (
             <p
@@ -485,22 +499,26 @@ export default function UploadPage() {
 
       <SiteFooter />
 
-      {pendingPdf && agentConfig && (
+      {pendingPdf && (
         <PdfConsentModal
           pdf={pendingPdf}
           config={agentConfig}
-          ready={providerReady(agentConfig)}
+          ready={
+            MANAGED_MODE ? true : agentConfig ? providerReady(agentConfig) : false
+          }
           onCancel={cancelPdfExtraction}
           onConfirm={confirmPdfExtraction}
           onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
 
-      <AgentSettings
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onChange={(c) => setAgentConfig(c)}
-      />
+      {!MANAGED_MODE && (
+        <AgentSettings
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onChange={(c) => setAgentConfig(c)}
+        />
+      )}
     </main>
   );
 }
@@ -604,14 +622,23 @@ function PdfConsentModal({
   onOpenSettings,
 }: {
   pdf: PendingPdf;
-  config: AgentClientConfig;
+  config: AgentClientConfig | null;
   ready: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   onOpenSettings: () => void;
 }) {
-  const provider = PROVIDERS[config.activeProvider];
-  const isLocal = config.activeProvider === "ollama";
+  const providerLabel = MANAGED_MODE
+    ? "Claude (hosted)"
+    : config
+      ? PROVIDERS[config.activeProvider].label
+      : "(no provider)";
+  const isLocal = !MANAGED_MODE && config?.activeProvider === "ollama";
+  const modelLabel = MANAGED_MODE
+    ? "claude-sonnet-4-5"
+    : config
+      ? modelFor(config)
+      : "—";
   const preview = pdf.text.slice(0, 480).replace(/\s+/g, " ").trim();
   return (
     <div
@@ -651,15 +678,22 @@ function PdfConsentModal({
               {isLocal ? (
                 <>
                   This PDF&apos;s text will be sent to{" "}
-                  <strong>{provider.label}</strong> running on your machine.
+                  <strong>{providerLabel}</strong> running on your machine.
                   Nothing leaves your device.
+                </>
+              ) : MANAGED_MODE ? (
+                <>
+                  This PDF&apos;s text will be sent to{" "}
+                  <strong>{providerLabel}</strong> via the server hosting
+                  this app, which routes the request to Anthropic using a
+                  server-side key.
                 </>
               ) : (
                 <>
                   This PDF&apos;s text will be sent to{" "}
-                  <strong>{provider.label}</strong> at{" "}
-                  <span className="font-mono">{modelFor(config)}</span>. The
-                  data will leave your browser and travel to that provider&apos;s
+                  <strong>{providerLabel}</strong> at{" "}
+                  <span className="font-mono">{modelLabel}</span>. The data
+                  will leave your browser and travel to that provider&apos;s
                   servers under their privacy policy.
                 </>
               )}
@@ -676,9 +710,9 @@ function PdfConsentModal({
             </pre>
           </details>
 
-          {!ready && (
+          {!ready && !MANAGED_MODE && (
             <p className="text-xs text-accent">
-              No API key configured for {provider.label}.{" "}
+              No API key configured for {providerLabel}.{" "}
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -692,13 +726,17 @@ function PdfConsentModal({
         </div>
 
         <footer className="px-6 py-3 border-t border-rule bg-ink/[0.02] flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="text-xs text-muted underline underline-offset-4 hover:text-accent"
-          >
-            Use a different provider
-          </button>
+          {!MANAGED_MODE ? (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="text-xs text-muted underline underline-offset-4 hover:text-accent"
+            >
+              Use a different provider
+            </button>
+          ) : (
+            <span />
+          )}
           <div className="flex items-center gap-2">
             <button
               type="button"

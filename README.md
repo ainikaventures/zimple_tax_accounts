@@ -152,13 +152,52 @@ Full privacy notice in [`docs/PRIVACY.md`](./docs/PRIVACY.md) and on the
 Copy `.env.local.example` to `.env.local` if you want to override any of
 the optional settings:
 
-| Variable             | Purpose                                                        |
-| -------------------- | -------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`  | Server-side Claude key. Only used as fallback when the user has not configured a provider in the chat settings. Almost always unnecessary — the BYOK flow handles every cloud provider. |
-| `AGENT_PROVIDER`     | `claude` or `ollama`. Only consumed by the server fallback path. |
+| Variable                  | Purpose                                                        |
+| ------------------------- | -------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`       | Server-side Claude key. Required in **managed mode**; ignored in default BYOK mode. |
+| `NEXT_PUBLIC_AGENT_MODE`  | Set to `managed` to enable managed mode (see below). Leave unset for default BYOK. |
+| `AGENT_PROVIDER`          | Reserved — not currently consumed by the app.                  |
 
 There is no `OPENAI_API_KEY` / `GROQ_API_KEY` etc. on the server side by
-design: every cloud provider is BYOK from the browser.
+design: cloud providers other than Claude are always BYOK from the
+browser.
+
+### Default mode (BYOK)
+
+Every user provides their own API key for whichever cloud provider they
+prefer, via the in-app settings modal. Keys live in their browser's
+`localStorage`; chat / PDF-extraction traffic goes browser-direct to
+that provider. **The operator pays nothing for LLM calls.** This is the
+right setup for almost every deployment.
+
+### Managed mode (single shared key)
+
+Set both `ANTHROPIC_API_KEY` and `NEXT_PUBLIC_AGENT_MODE=managed` and
+the app:
+
+- hides the chat panel's provider dropdown and ⚙ settings button,
+- shows a small "Powered by Claude · hosted" label instead,
+- routes every chat turn through `POST /api/agent` (streaming SSE),
+- routes PDF-statement extraction through `POST /api/agent/extract-pdf`.
+
+**The operator pays for every LLM call** under their Anthropic
+account. Useful for letting a small group of testers (e.g. accountants
+reviewing the tool) try the chat without setting up their own keys.
+Switch off again by removing both env vars and redeploying.
+
+#### Setting it up on Vercel
+
+1. Open your Vercel project → **Settings** → **Environment Variables**.
+2. Add **`ANTHROPIC_API_KEY`** with the value `sk-ant-...` from
+   <https://console.anthropic.com/settings/keys>. Scope: **Production**
+   (and **Preview** if you want PRs to test it too). Type:
+   **Encrypted**.
+3. Add **`NEXT_PUBLIC_AGENT_MODE`** with the value `managed`. Same scope.
+4. Trigger a redeploy (push to `main`, or hit "Redeploy" on the latest
+   deployment).
+
+To switch back to BYOK: delete both variables, redeploy. No code
+change needed — the UI flips back automatically.
 
 ## Documentation
 

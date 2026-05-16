@@ -497,6 +497,76 @@ export async function* extractTransactionsFromPdfText(
   yield* streamRaw(config, PDF_EXTRACTION_SYSTEM_PROMPT, [], userMessage);
 }
 
+// ─── Managed mode (server-side ANTHROPIC_API_KEY) ──────────────────────────
+
+/**
+ * True when the deployment is configured to route every chat through the
+ * server-side /api/agent route using ANTHROPIC_API_KEY, instead of asking
+ * each user to bring their own key.
+ *
+ * Set NEXT_PUBLIC_AGENT_MODE=managed in Vercel project env vars (or in
+ * .env.local for a local run). Unset = default BYOK behaviour.
+ */
+export const MANAGED_MODE =
+  process.env.NEXT_PUBLIC_AGENT_MODE === "managed";
+
+/**
+ * Consume one of our streaming SSE endpoints and yield the text deltas
+ * back. Errors emitted by the server (`data: {"error":"…"}`) are surfaced
+ * as throws.
+ */
+async function* consumeSSEStream(
+  response: Response,
+): AsyncGenerator<string> {
+  if (!response.ok) {
+    let detail = "";
+    try {
+      detail = await response.text();
+    } catch {
+      detail = response.statusText;
+    }
+    throw new Error(`Server error ${response.status}: ${detail || "no body"}`);
+  }
+  for await (const event of parseSSE(response.body)) {
+    const e = event as { text?: string; error?: string };
+    if (e.error) throw new Error(e.error);
+    if (typeof e.text === "string") yield e.text;
+  }
+}
+
+/**
+ * Managed-mode chat: posts {context, history, message} to /api/agent and
+ * streams the response back. No browser-side API key needed.
+ */
+export async function* streamManagedChat(
+  context: AgentContext,
+  history: AgentMessage[],
+  message: string,
+): AsyncGenerator<string> {
+  const response = await fetch("/api/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context, history, message }),
+  });
+  yield* consumeSSEStream(response);
+}
+
+/**
+ * Managed-mode PDF extraction: posts the PDF text to /api/agent/extract-pdf
+ * and streams the CSV back.
+ */
+export async function* extractTransactionsManaged(
+  pdfText: string,
+  filename: string,
+): AsyncGenerator<string> {
+  const response = await fetch("/api/agent/extract-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pdfText, filename }),
+  });
+  yield* consumeSSEStream(response);
+}
+
 /**
  * Clean the LLM's output: strip code-fence markers, leading prose, and
  * anything before the `Date,Description,Amount` header line. Keeps the
