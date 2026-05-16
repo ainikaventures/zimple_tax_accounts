@@ -398,16 +398,16 @@ async function* streamOllama(opts: StreamOpts): AsyncGenerator<string> {
 // ─── Public entry point ────────────────────────────────────────────────────
 
 /**
- * Stream a chat completion from the user's currently-active provider.
- * Yields text chunks as they arrive; the caller concatenates and renders.
+ * Stream a completion from the user's currently-active provider with a
+ * caller-supplied system prompt + history + final user message. Used by
+ * both the chat and the PDF-extraction flow.
  */
-export async function* streamChat(
+export async function* streamRaw(
   config: AgentClientConfig,
-  context: AgentContext,
+  systemPrompt: string,
   history: AgentMessage[],
   message: string,
 ): AsyncGenerator<string> {
-  const systemPrompt = buildSystemPrompt(context);
   const trimmed = trimHistory(history, HISTORY_LIMIT);
   const opts: StreamOpts = { config, systemPrompt, history: trimmed, message };
 
@@ -432,4 +432,82 @@ export async function* streamChat(
       throw new Error(`Unknown provider: ${String(exhaustive)}`);
     }
   }
+}
+
+/**
+ * Stream a chat completion grounded in the user's TaxResult / suggestions /
+ * rules. Used by the chat panel on /calculate.
+ */
+export async function* streamChat(
+  config: AgentClientConfig,
+  context: AgentContext,
+  history: AgentMessage[],
+  message: string,
+): AsyncGenerator<string> {
+  yield* streamRaw(config, buildSystemPrompt(context), history, message);
+}
+
+// ─── PDF extraction prompt ─────────────────────────────────────────────────
+
+/**
+ * System prompt for the PDF → CSV extractor. Constrains the model to emit
+ * machine-parseable CSV so the existing src/lib/statementParser.ts generic
+ * extractor can consume the output without modification.
+ */
+export const PDF_EXTRACTION_SYSTEM_PROMPT = [
+  "You are a UK bank-statement transaction extractor. The user will paste the raw text of a bank-statement PDF. Your job is to extract every line-item transaction and return it as CSV — and nothing else.",
+  "",
+  "STRICT OUTPUT FORMAT:",
+  "- Output ONLY CSV. No prose, no commentary, no code fences, no markdown.",
+  "- The first line MUST be the header: Date,Description,Amount",
+  "- One transaction per row. No blank lines.",
+  "- Date in DD/MM/YYYY format.",
+  "- Description: counterparty + reference combined, on one line, with NO commas inside (use spaces or dashes instead).",
+  "- Amount: a single number, in pounds. POSITIVE for credits (money in). NEGATIVE for debits (money out). No £ symbol, no thousands separators, no parentheses-for-negative.",
+  "",
+  "WHAT TO INCLUDE:",
+  "- Every dated transaction the statement shows.",
+  "",
+  "WHAT TO EXCLUDE:",
+  "- Opening / closing balance lines.",
+  "- Subtotals, interest summaries, statement headers, addresses, account numbers.",
+  "- Any non-transaction text from the statement.",
+  "",
+  "If the text contains no recognisable transactions, output ONLY the header line and stop.",
+].join("\n");
+
+/**
+ * Stream the LLM's CSV extraction of a PDF's plain text. The caller
+ * collects the chunks, then feeds the resulting string into parseCSV().
+ */
+export async function* extractTransactionsFromPdfText(
+  config: AgentClientConfig,
+  pdfText: string,
+  filename: string,
+): AsyncGenerator<string> {
+  const userMessage = [
+    `Source: ${filename}`,
+    "",
+    "Raw PDF text follows. Extract transactions to CSV.",
+    "",
+    "```",
+    pdfText,
+    "```",
+  ].join("\n");
+  yield* streamRaw(config, PDF_EXTRACTION_SYSTEM_PROMPT, [], userMessage);
+}
+
+/**
+ * Clean the LLM's output: strip code-fence markers, leading prose, and
+ * anything before the `Date,Description,Amount` header line. Keeps the
+ * output robust against models that ignore the "CSV only" instruction.
+ */
+export function cleanExtractedCsv(raw: string): string {
+  let text = raw.trim();
+  text = text.replace(/^```(?:csv)?\s*/i, "").replace(/```\s*$/i, "");
+  const headerMatch = text.match(/Date\s*,\s*Description\s*,\s*Amount/i);
+  if (headerMatch && headerMatch.index !== undefined) {
+    text = text.slice(headerMatch.index);
+  }
+  return text.trim();
 }

@@ -39,7 +39,7 @@ export default function Home() {
             Upload your statements →
           </Link>
           <span className="font-sans uppercase tracking-[0.16em] text-[11px] text-muted">
-            Version 1.0.0
+            Version 1.1.0
           </span>
         </div>
       </section>

@@ -41,17 +41,21 @@ export default function PrivacyPage() {
 
         <Section title="One-paragraph summary">
           <p>
-            Statements are parsed in your browser. Calculation runs in your
-            browser. Suggestions are generated in your browser. The chat
-            assistant, by default, runs on your own machine via Ollama —
-            also no network. If you opt into a cloud LLM provider, your
-            browser calls that provider directly with the API key you have
-            personally pasted in; the server hosting this app is never
-            involved.
+            CSV statements are parsed in your browser. Calculation runs in
+            your browser. Suggestions are generated in your browser. The
+            chat assistant, by default, runs on your own machine via Ollama
+            — also no network. PDF statements (added in v1.1) are extracted
+            in your browser via PDF.js and then sent to your active AI
+            provider for transaction extraction; if you stay on the default
+            local Ollama, that step is also local. If you opt into a cloud
+            LLM provider (Claude / OpenAI / Gemini / Groq) for either the
+            chat or PDF extraction, your browser calls that provider
+            directly with the API key you have personally pasted in; the
+            server hosting this app is never involved.
           </p>
         </Section>
 
-        <Section title="Bank statements">
+        <Section title="Bank statements — CSV">
           <p>
             CSV files you drop into the upload page are read using the
             browser&apos;s native File API. The parser, classifier, and
@@ -67,6 +71,37 @@ export default function PrivacyPage() {
             so a page reload doesn&apos;t lose your work. You can clear this
             at any time by clicking <em>Clear all</em> on the upload page
             or by clearing your browser&apos;s site data for this domain.
+          </p>
+        </Section>
+
+        <Section title="Bank statements — PDF">
+          <p>
+            PDF statements are dropped onto the same upload page. Step one
+            is in your browser: PDF.js extracts the text layer. Step two
+            sends that text to your active AI provider with a prompt that
+            asks it to emit a CSV. The returned CSV is then parsed by the
+            same browser-side parser used for CSV uploads, and the
+            classified transactions land in the same{" "}
+            <code className="font-mono text-sm bg-ink/[0.04] px-1.5 py-0.5 rounded">
+              uk-tax-advisor:statements
+            </code>{" "}
+            localStorage entry.
+          </p>
+          <p>
+            <strong>Where the PDF text goes depends on your active
+            provider.</strong> If it is the default <em>Ollama (local)</em>,
+            the text travels to a process running on your own machine —
+            still no network exposure. If it is a cloud provider
+            (Claude / OpenAI / Gemini / Groq), the PDF text travels from
+            your browser to that provider&apos;s servers, exactly the same
+            shape as a chat message. A consent modal in the upload flow
+            tells you which provider is about to receive the text and lets
+            you cancel or pick a different provider.
+          </p>
+          <p>
+            Scanned PDFs without an extractable text layer are not yet
+            supported — the upload flow tells you so and stops; no OCR is
+            performed locally or remotely.
           </p>
         </Section>
 

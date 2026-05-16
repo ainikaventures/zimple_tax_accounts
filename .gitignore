@@ -44,3 +44,6 @@ next-env.d.ts
 
 # playwright (MCP browser-driver scratch dir for local UI smoke tests)
 /.playwright-mcp/
+
+# pdfjs worker — copied from node_modules on `npm run sync-pdf-worker`
+/public/pdf.worker.min.mjs

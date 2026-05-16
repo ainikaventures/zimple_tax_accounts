@@ -1,6 +1,6 @@
 {
   "name": "uk-tax-advisor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Source-available UK personal income tax web app — calculation, suggestions, AI assistant, and filing-ready exports. Free for noncommercial use; commercial licence required.",
   "license": "PolyForm-Noncommercial-1.0.0",
@@ -16,8 +16,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run sync-pdf-worker && next dev",
+    "build": "npm run sync-pdf-worker && next build",
+    "sync-pdf-worker": "cp node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs public/pdf.worker.min.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "for f in tests/*.test.ts; do echo \"\\n→ $f\"; tsx \"$f\" || exit 1; done",
@@ -26,6 +27,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
     "next": "15.5.18",
+    "pdfjs-dist": "^5.7.284",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "xlsx": "^0.18.5"

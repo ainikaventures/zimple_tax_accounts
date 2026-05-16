@@ -20,10 +20,15 @@ import {
   useState,
 } from "react";
 
-export interface UploadedFile {
-  name: string;
-  content: string;
-}
+/**
+ * Result of dropping a file. CSVs are read to text in the dropzone (so the
+ * caller gets the content directly); PDFs are passed through as File
+ * objects because the caller needs to do extraction asynchronously with
+ * consent UI in front of it.
+ */
+export type UploadedFile =
+  | { kind: "csv"; name: string; content: string }
+  | { kind: "pdf"; name: string; file: File };
 
 interface FileDropzoneProps {
   /** Invoked once per drop / select with every file in the batch. */
@@ -45,23 +50,32 @@ export function FileDropzone({ onFiles, disabled }: FileDropzoneProps) {
       setBusy(true);
       try {
         const list = Array.from(files);
-        const csvs = list.filter(
-          (f) => f.name.toLowerCase().endsWith(".csv") || f.type === "text/csv",
-        );
-        const skipped = list.length - csvs.length;
-        if (skipped > 0) {
+        const accepted: UploadedFile[] = [];
+        const rejected: string[] = [];
+        for (const file of list) {
+          const name = file.name.toLowerCase();
+          if (name.endsWith(".csv") || file.type === "text/csv") {
+            accepted.push({
+              kind: "csv",
+              name: file.name,
+              content: await file.text(),
+            });
+          } else if (
+            name.endsWith(".pdf") ||
+            file.type === "application/pdf"
+          ) {
+            accepted.push({ kind: "pdf", name: file.name, file });
+          } else {
+            rejected.push(file.name);
+          }
+        }
+        if (rejected.length > 0) {
           setLastError(
-            `Skipped ${skipped} non-CSV file${skipped === 1 ? "" : "s"} — only .csv files are supported.`,
+            `Skipped ${rejected.length} unsupported file${rejected.length === 1 ? "" : "s"} (${rejected.join(", ")}) — only .csv and .pdf are accepted.`,
           );
         }
-        if (csvs.length === 0) return;
-        const parsed = await Promise.all(
-          csvs.map(async (file) => ({
-            name: file.name,
-            content: await file.text(),
-          })),
-        );
-        onFiles(parsed);
+        if (accepted.length === 0) return;
+        onFiles(accepted);
       } catch (err) {
         setLastError(
           err instanceof Error
@@ -137,15 +151,17 @@ export function FileDropzone({ onFiles, disabled }: FileDropzoneProps) {
             ? "Reading…"
             : isDragOver
               ? "Drop to upload"
-              : "Drop CSV statements here"}
+              : "Drop CSV or PDF statements here"}
         </p>
         <p className="mt-2 text-sm text-muted">
-          {busy ? "Parsing in your browser." : "or click to choose files"}
+          {busy
+            ? "Parsing in your browser."
+            : "or click to choose files · CSV stays local · PDF needs an AI provider"}
         </p>
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,.pdf,text/csv,application/pdf"
           multiple
           onChange={handleChange}
           className="sr-only"

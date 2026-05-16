@@ -6,15 +6,19 @@ same content; this file is the source of truth for changes.
 
 ## One-paragraph summary
 
-Bank statements are parsed entirely in your browser. The income-tax
-calculation runs in your browser. Suggestions are generated in your
-browser. The chat assistant, by default, runs on your own machine via
-Ollama — also no network. If you switch to a cloud LLM provider, your
-browser calls that provider's API directly with the API key you have
-personally pasted in. The server hosting this app is never in the
-loop for the chat, and only ever sees your data when you click
-*Download Excel* (which POSTs your assembled export payload to a local
-API route that builds the XLSX and streams it back).
+CSV bank statements are parsed entirely in your browser. The
+income-tax calculation runs in your browser. Suggestions are generated
+in your browser. The chat assistant, by default, runs on your own
+machine via Ollama — also no network. PDF statements (since v1.1) are
+extracted in your browser via PDF.js and then sent to your active AI
+provider for transaction extraction; with the default local Ollama,
+that step is also local. If you switch to a cloud LLM provider for
+either chat or PDF extraction, your browser calls that provider's API
+directly with the API key you have personally pasted in. The server
+hosting this app is never in the loop for chat or PDF extraction, and
+only ever sees your data when you click *Download Excel* (which POSTs
+your assembled export payload to a local API route that builds the
+XLSX and streams it back).
 
 ## Where data lives
 
@@ -36,8 +40,8 @@ origin wipes all three keys completely.
 
 ## Network traffic
 
-The app never sends your statements over the network. The only paths
-that involve a network request at all are:
+The app never silently sends your statements over the network. The
+only paths that involve a network request at all are:
 
 1. **Static asset load** — the usual HTML/JS/CSS/font bundle served
    by Next.js when you first open the page. No user data attached.
@@ -53,7 +57,14 @@ that involve a network request at all are:
      them) under their own privacy policy. They do **not** see your
      transactions or other localStorage data unless you put it in a
      message yourself.
-3. **Excel export (when you click it)** — POSTs your assembled
+3. **PDF transaction extraction (when you opt in)** — same shape as
+   the chat call. PDF text extracted in-browser by PDF.js is sent to
+   your active AI provider with a "turn this into CSV" prompt:
+   - Local Ollama: stays on your machine, no network exposure.
+   - Cloud providers: PDF text travels to that provider's servers,
+     gated by an explicit consent modal that names the provider
+     before any byte is sent.
+4. **Excel export (when you click it)** — POSTs your assembled
    export payload (TaxResult, classified transactions, inferred
    incomes, suggestions) to `/api/export` on the local server. The
    route builds the XLSX with SheetJS and returns it in the response
@@ -96,7 +107,7 @@ their choice — the reference codebase ships with none of these.
 ## Cloud LLM providers — what they get
 
 If you pick Claude, OpenAI, Gemini, or Groq in the chat settings,
-that provider receives:
+that provider receives, **per chat turn**:
 
 - The system prompt the app builds, which includes a JSON dump of
   your computed `TaxResult` (gross income, PA, taxable bands,
@@ -105,8 +116,17 @@ that provider receives:
 - Your most recent message.
 - The API key you provided.
 
-Treat this as "you are sending your tax position to <provider>" and
-read their privacy policy if that matters to your threat model:
+And, **per PDF you choose to extract via a cloud provider**:
+
+- The raw text PDF.js pulled out of your statement (capped at ~60k
+  characters / ~15k tokens; longer statements are truncated and you
+  are told so before the send).
+- An extraction prompt asking for CSV output.
+- The same API key.
+
+Treat both flows as "you are sending your statement data to
+&lt;provider&gt;" and read their privacy policy if that matters to your
+threat model:
 
 - Anthropic — <https://www.anthropic.com/legal/privacy>
 - OpenAI — <https://openai.com/policies/privacy-policy/>
