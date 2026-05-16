@@ -22,16 +22,29 @@ import { ExportPanel } from "@/src/components/ExportPanel";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { SuggestionCard } from "@/src/components/SuggestionCard";
 import { TaxHeadline } from "@/src/components/TaxHeadline";
+import {
+  DEFAULT_EMPLOYMENT_STATUS,
+  EMPLOYMENT_OPTIONS,
+  helpTextFor,
+  loadEmploymentStatus,
+  saveEmploymentStatus,
+  type EmploymentStatus,
+} from "@/src/lib/employmentStatus";
 import type { ExportData } from "@/src/lib/export";
 import { gbp } from "@/src/lib/format";
 import type { IncomeInputs } from "@/src/lib/taxCalculator";
-import { getRules } from "@/src/lib/taxRules";
+import { getRules, type TaxYear } from "@/src/lib/taxRules";
 import { generateSuggestions, type Suggestion } from "@/src/lib/suggestions";
 import {
   inferIncomes,
   type ClassifiedTransaction,
   type InferredIncomes,
 } from "@/src/lib/statementParser";
+import {
+  detectCoverage,
+  filterToTaxYear,
+  primaryTaxYear,
+} from "@/src/lib/taxYearCoverage";
 
 const INPUTS_KEY = "uk-tax-advisor:inputs";
 const STATEMENTS_KEY = "uk-tax-advisor:statements";
@@ -61,6 +74,9 @@ interface Simulation {
 
 export default function CalculatePage() {
   const [inputs, setInputs] = useState<IncomeInputs>(DEFAULT_INPUTS);
+  const [employmentStatus, setEmploymentStatus] = useState<EmploymentStatus>(
+    DEFAULT_EMPLOYMENT_STATUS,
+  );
   const [simulation, setSimulation] = useState<Simulation | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [seededFrom, setSeededFrom] = useState<
@@ -71,6 +87,7 @@ export default function CalculatePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      setEmploymentStatus(loadEmploymentStatus());
       const rawInputs = window.localStorage.getItem(INPUTS_KEY);
       if (rawInputs) {
         const parsed = JSON.parse(rawInputs) as IncomeInputs;
@@ -99,6 +116,12 @@ export default function CalculatePage() {
       // private mode or quota — fail silently
     }
   }, [inputs, hydrated]);
+
+  // Persist employment status separately so /take-home and /calculate share it.
+  useEffect(() => {
+    if (!hydrated) return;
+    saveEmploymentStatus(employmentStatus);
+  }, [employmentStatus, hydrated]);
 
   const { suggestions, baseline: result } = useMemo(
     () => generateSuggestions(inputs),
@@ -195,12 +218,24 @@ export default function CalculatePage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-10 lg:gap-12">
-          <section aria-label="Inputs">
+          <section aria-label="Inputs" className="space-y-8">
+            <EmploymentToggle
+              value={employmentStatus}
+              onChange={setEmploymentStatus}
+            />
             <CalculationForm inputs={inputs} onChange={handleChange} />
           </section>
 
           <section aria-label="Results" className="space-y-10">
             <TaxHeadline result={result} />
+
+            <p
+              className="-mt-6 text-xs text-muted leading-relaxed"
+              role="note"
+              aria-live="polite"
+            >
+              {helpTextFor(employmentStatus)}
+            </p>
 
             <div>
               <h2 className="font-serif text-2xl mb-4 text-ink">
@@ -317,6 +352,52 @@ function PrivacyBanner() {
   );
 }
 
+function EmploymentToggle({
+  value,
+  onChange,
+}: {
+  value: EmploymentStatus;
+  onChange: (v: EmploymentStatus) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="block text-sm text-ink mb-2">
+        How do you earn?
+      </legend>
+      <div
+        role="radiogroup"
+        aria-label="Employment status"
+        className="flex flex-wrap gap-2"
+      >
+        {EMPLOYMENT_OPTIONS.map((opt) => {
+          const selected = opt.value === value;
+          return (
+            <label
+              key={opt.value}
+              className={[
+                "inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer transition-colors",
+                selected
+                  ? "border-accent bg-accent/5 text-ink"
+                  : "border-rule text-muted hover:border-ink/40 hover:text-ink",
+              ].join(" ")}
+            >
+              <input
+                type="radio"
+                name="employment-status"
+                value={opt.value}
+                checked={selected}
+                onChange={() => onChange(opt.value)}
+                className="sr-only"
+              />
+              <span>{opt.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 function NoIncomePrompt() {
   return (
     <div className="mb-10 rounded border border-rule bg-paper p-5">
@@ -359,8 +440,19 @@ function seedFromStatements(): IncomeInputs | null {
       ...t,
       date: new Date(t.date),
     }));
-    const inferred = inferIncomes(hydrated);
-    const factor = annualisationFactor(statementSpanDays(hydrated));
+
+    // Pick the tax year with the most data and filter to it. Without this,
+    // statements spanning multiple tax years would either get annualised
+    // across the wrong year boundary, or — worse — sum income that belongs
+    // to a different tax year than the one being calculated.
+    const primary = primaryTaxYear(detectCoverage(hydrated));
+    const seededTaxYear: TaxYear =
+      primary?.taxYear ?? DEFAULT_INPUTS.taxYear ?? "2025/26";
+    const inYear = filterToTaxYear(hydrated, seededTaxYear);
+    const txsForInference = inYear.length > 0 ? inYear : hydrated;
+
+    const inferred = inferIncomes(txsForInference);
+    const factor = annualisationFactor(statementSpanDays(txsForInference));
     const overrides = parsed.overrides ?? {};
 
     const value = (key: NumericIncomeField): number => {
@@ -372,6 +464,7 @@ function seedFromStatements(): IncomeInputs | null {
 
     return {
       ...DEFAULT_INPUTS,
+      taxYear: seededTaxYear,
       earnedIncome:
         value("earnedIncome") +
         value("selfEmploymentIncome") +
@@ -436,10 +529,21 @@ function assembleExportData(
           overrides?: Partial<Record<NumericIncomeField, number>>;
         };
         if (Array.isArray(parsed.transactions)) {
-          transactions = parsed.transactions.map((t) => ({
-            ...t,
-            date: new Date(t.date),
-          }));
+          const allTxs: ClassifiedTransaction[] = parsed.transactions.map(
+            (t) => ({
+              ...t,
+              date: new Date(t.date),
+            }),
+          );
+          // Restrict to the tax year being calculated so the SA100 income
+          // split in the export reflects only that year's transactions.
+          // Falls back to all transactions if filtering empties the set
+          // (e.g. user picked a year before uploading data for it).
+          const inYear = filterToTaxYear(
+            allTxs,
+            inputs.taxYear ?? "2025/26",
+          );
+          transactions = inYear.length > 0 ? inYear : allTxs;
           if (transactions.length > 0) {
             const inferred = inferIncomes(transactions);
             const factor = annualisationFactor(

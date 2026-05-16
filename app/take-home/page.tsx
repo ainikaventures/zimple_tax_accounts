@@ -15,6 +15,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { SiteFooter } from "@/src/components/SiteFooter";
+import {
+  DEFAULT_EMPLOYMENT_STATUS,
+  EMPLOYMENT_OPTIONS,
+  helpTextFor,
+  loadEmploymentStatus,
+  saveEmploymentStatus,
+  type EmploymentStatus,
+} from "@/src/lib/employmentStatus";
 import { gbp, gbpPrecise, percent1 } from "@/src/lib/format";
 import {
   calculateTax,
@@ -40,11 +48,15 @@ const DEFAULT_STATE: FormState = {
 
 export default function TakeHomePage() {
   const [state, setState] = useState<FormState>(DEFAULT_STATE);
+  const [employmentStatus, setEmploymentStatus] = useState<EmploymentStatus>(
+    DEFAULT_EMPLOYMENT_STATUS,
+  );
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      setEmploymentStatus(loadEmploymentStatus());
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as FormState;
@@ -65,6 +77,11 @@ export default function TakeHomePage() {
       // ignore
     }
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveEmploymentStatus(employmentStatus);
+  }, [employmentStatus, hydrated]);
 
   const inputs: IncomeInputs = useMemo(
     () => ({
@@ -130,6 +147,17 @@ export default function TakeHomePage() {
               onSubmit={(e) => e.preventDefault()}
               aria-label="Take-home inputs"
             >
+              <RadioGroup
+                name="employment-status"
+                label="How do you earn?"
+                value={employmentStatus}
+                options={EMPLOYMENT_OPTIONS.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                }))}
+                onChange={(v) => setEmploymentStatus(v as EmploymentStatus)}
+              />
+
               <NumberField
                 label="Annual gross salary (CTC)"
                 hint="The amount your employer pays before tax — from your contract, P60, or payslip."
@@ -203,6 +231,28 @@ export default function TakeHomePage() {
                 value={percent1(result.marginalRate)}
               />
             </div>
+
+            <p
+              className="text-xs text-muted leading-relaxed"
+              role="note"
+              aria-live="polite"
+            >
+              {helpTextFor(employmentStatus)}
+              {employmentStatus !== "salaried" && (
+                <>
+                  {" "}
+                  This calculator assumes Class 1 (employee) NI; for full
+                  self-employed treatment use the{" "}
+                  <Link
+                    href="/calculate"
+                    className="text-accent underline underline-offset-4 hover:no-underline"
+                  >
+                    detailed calculator
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
 
             <div>
               <h2 className="text-[11px] uppercase tracking-[0.16em] text-muted mb-3">

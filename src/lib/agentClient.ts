@@ -568,16 +568,27 @@ export async function* extractTransactionsManaged(
 }
 
 /**
- * Clean the LLM's output: strip code-fence markers, leading prose, and
- * anything before the `Date,Description,Amount` header line. Keeps the
- * output robust against models that ignore the "CSV only" instruction.
+ * Clean the LLM's output: strip code-fence markers and anything before the
+ * first line that looks like a CSV header. Tolerant of common deviations:
+ * spaces between columns, extra columns (Balance), capitalisation, etc.
+ *
+ * Heuristic: a header line is any line containing both "date" and "amount"
+ * (case-insensitive, word-boundary). Everything before that is treated as
+ * preamble and dropped. If no header-shaped line is found we return the
+ * cleaned text as-is and let the parser report a useful error downstream.
  */
 export function cleanExtractedCsv(raw: string): string {
   let text = raw.trim();
-  text = text.replace(/^```(?:csv)?\s*/i, "").replace(/```\s*$/i, "");
-  const headerMatch = text.match(/Date\s*,\s*Description\s*,\s*Amount/i);
-  if (headerMatch && headerMatch.index !== undefined) {
-    text = text.slice(headerMatch.index);
+  // Strip leading and trailing code-fence markers (```csv or just ```).
+  text = text.replace(/^```(?:csv|CSV)?\s*\n?/i, "").replace(/\n?\s*```\s*$/i, "");
+
+  const lines = text.split("\n");
+  const headerIdx = lines.findIndex((line) => {
+    const lower = line.toLowerCase();
+    return /\bdate\b/.test(lower) && /\bamount\b/.test(lower);
+  });
+  if (headerIdx > 0) {
+    text = lines.slice(headerIdx).join("\n");
   }
   return text.trim();
 }

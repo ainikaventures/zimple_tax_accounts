@@ -111,6 +111,26 @@ export function primaryTaxYear(
 }
 
 /**
+ * True if `date` falls inside the UK tax year named by `year` — i.e.
+ * between 6 April Y inclusive and 5 April Y+1 inclusive.
+ */
+export function isInTaxYear(date: Date, year: TaxYear): boolean {
+  try {
+    return taxYearForDate(date) === year;
+  } catch {
+    return false;
+  }
+}
+
+/** Filter transactions down to those falling within the given tax year. */
+export function filterToTaxYear(
+  transactions: ClassifiedTransaction[],
+  year: TaxYear,
+): ClassifiedTransaction[] {
+  return transactions.filter((t) => isInTaxYear(t.date, year));
+}
+
+/**
  * The twelve calendar months of a UK tax year (Apr Y → Mar Y+1).
  */
 function monthsInTaxYear(year: TaxYear): { key: string; label: string }[] {
