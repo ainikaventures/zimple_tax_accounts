@@ -88,6 +88,35 @@ provider (Claude / OpenAI / Gemini / Groq), and paste your API key. Keys
 are stored in your browser's localStorage and are never sent to our
 server.
 
+## Deploy
+
+The simplest path is **Vercel** — the platform Next.js was built for. The
+repo ships with a [`vercel.json`](./vercel.json) pinning the deployment
+to the London region (`lhr1`) for low latency from the UK; everything
+else is auto-detected.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ainikaventures/zimple_tax_accounts&project-name=uk-tax-advisor&repository-name=uk-tax-advisor)
+
+Or click [vercel.com/new](https://vercel.com/new), pick this repository
+from your GitHub account, and accept the defaults. No environment
+variables are required — the chat is bring-your-own-key from the
+browser, so the operator pays nothing for LLM calls.
+
+What ships:
+
+- **Static**: homepage, `/upload`, `/calculate`, `/about`, `/privacy`
+  prerender at build time and serve from Vercel's CDN.
+- **Serverless functions**: `/api/agent` (server-side Claude fallback if
+  you set `ANTHROPIC_API_KEY` in Vercel project env vars) and
+  `/api/export` (SheetJS XLSX generation).
+- **CI**: every push to `main` redeploys automatically. The Vercel
+  preview URL is generated on every pull request.
+
+Note: Vercel's free **Hobby** tier is **noncommercial-only**, which
+matches this project's PolyForm Noncommercial licence. If you ever
+take a commercial licence for the software you'll need a Vercel Pro
+plan to match.
+
 ## Scripts
 
 ```bash
