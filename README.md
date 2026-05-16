@@ -1,8 +1,9 @@
 # uk-tax-advisor
 
-Open-source UK personal income tax web app. Upload your bank statements, get
-an accurate tax calculation, see personalised tax-saving suggestions, chat
-with an AI agent about UK tax rules, and export filing-ready Excel and JSON.
+Source-available UK personal income tax web app. Upload your bank statements,
+get an accurate tax calculation, see personalised tax-saving suggestions,
+chat with an AI agent about UK tax rules, and export filing-ready Excel and
+JSON.
 
 > **Status: under construction.** Functionality lands progressively per the
 > sprint plan in [`info/PROJECT_BRIEF.md`](./info/PROJECT_BRIEF.md). A full
@@ -22,9 +23,19 @@ estimates and may be wrong for your specific circumstances. You remain
 responsible for your own tax filings — verify with HMRC or a chartered tax
 adviser before submitting anything.
 
-## License
+## Licence
 
-[GNU Affero General Public License v3.0 or later](./LICENSE).
+Licensed under the [**PolyForm Noncommercial Licence 1.0.0**](./LICENSE).
+
+- **Free** for any noncommercial purpose — personal use, research, study,
+  hobby projects, educational use, charities, public-research and government
+  institutions.
+- **A separate commercial licence is required** for any commercial use,
+  including hosted/SaaS offerings, paid services built on top of the
+  software, or any other use with anticipated commercial application.
+
+For commercial-licensing enquiries, please open an issue at the repository
+below or contact the address in [LICENSE](./LICENSE).
 
 ## Source
 

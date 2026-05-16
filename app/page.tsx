@@ -10,7 +10,7 @@ export default function Home() {
     <main className="min-h-screen flex flex-col">
       <header className="px-6 sm:px-12 pt-10">
         <p className="font-sans text-[11px] uppercase tracking-[0.18em] text-muted">
-          Open source · UK personal income tax
+          Source-available · UK personal income tax
         </p>
       </header>
 
@@ -40,7 +40,7 @@ export default function Home() {
 
       <footer className="px-6 sm:px-12 pb-8">
         <div className="max-w-3xl mx-auto border-t border-rule pt-6 flex flex-col sm:flex-row gap-2 sm:gap-6 text-[12px] text-muted">
-          <span>Open source · AGPL 3.0</span>
+          <span>Free for personal use · Commercial licence required</span>
           <span aria-hidden className="hidden sm:inline">
             ·
           </span>

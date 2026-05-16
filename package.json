@@ -2,8 +2,8 @@
   "name": "uk-tax-advisor",
   "version": "0.1.0",
   "private": true,
-  "description": "Open-source UK personal income tax web app — calculation, suggestions, AI assistant, and filing-ready exports.",
-  "license": "AGPL-3.0-or-later",
+  "description": "Source-available UK personal income tax web app — calculation, suggestions, AI assistant, and filing-ready exports. Free for noncommercial use; commercial licence required.",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "homepage": "https://github.com/ainikaventures/zimple_tax_accounts",
   "repository": {
     "type": "git",
