@@ -14,6 +14,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AgentChat } from "@/src/components/AgentChat";
 import { AllowancesPanel } from "@/src/components/AllowancesPanel";
 import { BandBreakdownBar } from "@/src/components/BandBreakdownBar";
 import { CalculationForm } from "@/src/components/CalculationForm";
@@ -256,6 +257,10 @@ export default function CalculatePage() {
       </div>
 
       <Footer />
+
+      {hasIncome && (
+        <AgentChat context={{ taxResult: result, suggestions, rules }} />
+      )}
     </main>
   );
 }
