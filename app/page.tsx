@@ -8,6 +8,7 @@
 import Link from "next/link";
 
 import { SiteFooter } from "@/src/components/SiteFooter";
+import { version as APP_VERSION } from "../package.json";
 
 export default function Home() {
   return (
@@ -46,7 +47,7 @@ export default function Home() {
           </Link>
         </div>
         <p className="mt-5 text-xs text-muted font-mono uppercase tracking-[0.16em]">
-          Version 1.4.0
+          Version {APP_VERSION}
         </p>
       </section>
 
