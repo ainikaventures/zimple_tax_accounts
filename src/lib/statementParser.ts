@@ -227,12 +227,14 @@ function parseDate(value: string | undefined): Date | null {
 
 /**
  * Find the index of a header by case-insensitive exact match against any of
- * the given candidate names. Returns -1 when none match.
+ * the given candidate names. Returns -1 when none match. Trims both sides
+ * before comparing so headers from PDF-extracted CSVs ("Date, Description,
+ * Amount" — with the space the model inserts after each comma) still match.
  */
 function findHeader(headers: string[], candidates: string[]): number {
   for (const candidate of candidates) {
-    const lc = candidate.toLowerCase();
-    const idx = headers.findIndex((h) => h.toLowerCase() === lc);
+    const lc = candidate.trim().toLowerCase();
+    const idx = headers.findIndex((h) => h.trim().toLowerCase() === lc);
     if (idx >= 0) return idx;
   }
   return -1;
@@ -269,7 +271,7 @@ function rawRecord(headers: string[], cols: string[]): Record<string, string> {
  * we treat the file as a generic single-Amount-column statement.
  */
 function detectFormat(headers: string[]): BankFormat {
-  const lc = headers.map((h) => h.toLowerCase());
+  const lc = headers.map((h) => h.trim().toLowerCase());
 
   const hasMonzoTriple =
     lc.includes("amount") && lc.includes("name") && lc.includes("category");

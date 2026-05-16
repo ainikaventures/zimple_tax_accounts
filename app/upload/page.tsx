@@ -373,14 +373,24 @@ export default function UploadPage() {
     );
 
     const csv = cleanExtractedCsv(accumulated);
-    if (!csv.toLowerCase().includes("date,description,amount")) {
+    // Accept any header line that contains both "date" and "amount" as
+    // whole words — same heuristic as cleanExtractedCsv, so the guard
+    // tolerates spacing ("Date, Description, Amount"), extra columns
+    // ("Date,Description,Amount,Balance"), and different orderings.
+    const firstLine = csv.split("\n").find((l) => l.trim().length > 0) ?? "";
+    const firstLineLc = firstLine.toLowerCase();
+    const looksLikeHeader =
+      /\bdate\b/.test(firstLineLc) && /\bamount\b/.test(firstLineLc);
+    if (!looksLikeHeader) {
+      const preview = accumulated.trim().slice(0, 160);
       setProgress({
         step: "error",
         filename,
         pageCount: pendingPdf.pageCount,
         charsSent: pendingPdf.text.length,
         errorMessage:
-          "The model returned no recognisable CSV header. Try a different model or try again.",
+          "The model returned no recognisable CSV header. Try a different model or try again." +
+          (preview ? ` (Got: "${preview}${accumulated.length > 160 ? "…" : ""}")` : ""),
       });
       return;
     }
