@@ -18,8 +18,10 @@ import { AgentChat } from "@/src/components/AgentChat";
 import { AllowancesPanel } from "@/src/components/AllowancesPanel";
 import { BandBreakdownBar } from "@/src/components/BandBreakdownBar";
 import { CalculationForm } from "@/src/components/CalculationForm";
+import { ExportPanel } from "@/src/components/ExportPanel";
 import { SuggestionCard } from "@/src/components/SuggestionCard";
 import { TaxHeadline } from "@/src/components/TaxHeadline";
+import type { ExportData } from "@/src/lib/export";
 import { gbp } from "@/src/lib/format";
 import {
   calculateTax,
@@ -107,6 +109,11 @@ export default function CalculatePage() {
   const rules = useMemo(
     () => getRules(inputs.taxYear ?? "2025/26"),
     [inputs.taxYear],
+  );
+
+  const exportData: ExportData = useMemo(
+    () => assembleExportData(inputs, result, suggestions),
+    [inputs, result, suggestions],
   );
 
   const handleChange = useCallback(
@@ -252,6 +259,12 @@ export default function CalculatePage() {
                 );
               })}
             </div>
+          </section>
+        )}
+
+        {hasIncome && (
+          <section className="mt-16" aria-label="Download tax data">
+            <ExportPanel data={exportData} />
           </section>
         )}
       </div>
@@ -402,6 +415,94 @@ function annualisationFactor(spanDays: number): number {
   if (spanDays < 28) return 1;
   if (spanDays >= 365) return 1;
   return 365 / spanDays;
+}
+
+// ─── ExportData assembly ───────────────────────────────────────────────────
+
+/**
+ * Build the payload the export module wants. The TaxResult and suggestions
+ * come straight from the running calculation. For `transactions` and
+ * `incomes` we replay the upload-flow state: we want the SA100 helper to
+ * preserve the original salary / self-employment / rental split rather than
+ * lump everything into "Pay from employment" when the data came from a
+ * statement upload. If the user landed on /calculate directly without
+ * uploading anything, we fall back to a synthetic InferredIncomes where
+ * the whole `inputs.earnedIncome` goes into the salary line.
+ */
+function assembleExportData(
+  inputs: IncomeInputs,
+  taxResult: import("@/src/lib/taxCalculator").TaxResult,
+  suggestions: import("@/src/lib/suggestions").Suggestion[],
+): ExportData {
+  let transactions: ClassifiedTransaction[] = [];
+  let salary = inputs.earnedIncome;
+  let selfEmp = 0;
+  let rental = 0;
+  let inferredSavings = inputs.savingsIncome ?? 0;
+  let inferredDividend = inputs.dividendIncome ?? 0;
+  let inferredPension = inputs.pensionContributionsGross ?? 0;
+  let inferredCharity = inputs.giftAidGross ?? 0;
+  let needsReview: ClassifiedTransaction[] = [];
+
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(STATEMENTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          transactions?: Array<
+            Omit<ClassifiedTransaction, "date"> & { date: string }
+          >;
+          overrides?: Partial<Record<NumericIncomeField, number>>;
+        };
+        if (Array.isArray(parsed.transactions)) {
+          transactions = parsed.transactions.map((t) => ({
+            ...t,
+            date: new Date(t.date),
+          }));
+          if (transactions.length > 0) {
+            const inferred = inferIncomes(transactions);
+            const factor = annualisationFactor(
+              statementSpanDays(transactions),
+            );
+            const overrides = parsed.overrides ?? {};
+            const fld = (key: NumericIncomeField): number => {
+              const o = overrides[key];
+              if (o !== undefined) return o;
+              const r = inferred[key];
+              return typeof r === "number" ? r * factor : 0;
+            };
+            salary = fld("earnedIncome");
+            selfEmp = fld("selfEmploymentIncome");
+            rental = fld("rentalIncome");
+            // For savings/dividend/pension/charity, the /calculate form
+            // is authoritative — the user has had a chance to adjust them
+            // on this page, so we don't overwrite from upload state.
+            // Keep inferredX as-is (the values from `inputs`).
+            inferredSavings = inputs.savingsIncome ?? 0;
+            inferredDividend = inputs.dividendIncome ?? 0;
+            inferredPension = inputs.pensionContributionsGross ?? 0;
+            inferredCharity = inputs.giftAidGross ?? 0;
+            needsReview = inferred.needsReview;
+          }
+        }
+      }
+    } catch {
+      // ignore — keep the fallback
+    }
+  }
+
+  const incomes: InferredIncomes = {
+    earnedIncome: salary,
+    selfEmploymentIncome: selfEmp,
+    rentalIncome: rental,
+    savingsIncome: inferredSavings,
+    dividendIncome: inferredDividend,
+    pensionContributions: inferredPension,
+    charityDonations: inferredCharity,
+    needsReview,
+  };
+
+  return { taxResult, transactions, incomes, suggestions };
 }
 
 // ─── Suggestion → input-mutation mapping ───────────────────────────────────
