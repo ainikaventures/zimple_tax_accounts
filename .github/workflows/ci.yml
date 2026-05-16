@@ -1,0 +1,42 @@
+# .github/workflows/ci.yml — typecheck + tests + build on every push and PR.
+#
+# Mirrors the local Sprint discipline: typecheck and tests must both pass
+# before a build is even attempted, and the build itself has to succeed.
+# The test script is a POSIX-sh for-loop over tests/*.test.ts running
+# under tsx (no Jest), so it works fine on Ubuntu runners with the
+# default bash.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: typecheck · tests · build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build

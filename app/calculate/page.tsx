@@ -19,6 +19,7 @@ import { AllowancesPanel } from "@/src/components/AllowancesPanel";
 import { BandBreakdownBar } from "@/src/components/BandBreakdownBar";
 import { CalculationForm } from "@/src/components/CalculationForm";
 import { ExportPanel } from "@/src/components/ExportPanel";
+import { SiteFooter } from "@/src/components/SiteFooter";
 import { SuggestionCard } from "@/src/components/SuggestionCard";
 import { TaxHeadline } from "@/src/components/TaxHeadline";
 import type { ExportData } from "@/src/lib/export";
@@ -269,7 +270,7 @@ export default function CalculatePage() {
         )}
       </div>
 
-      <Footer />
+      <SiteFooter maxWidthClass="max-w-6xl" />
 
       {hasIncome && (
         <AgentChat context={{ taxResult: result, suggestions, rules }} />
@@ -330,23 +331,6 @@ function NoIncomePrompt() {
         to pre-fill these figures, or enter them manually below.
       </p>
     </div>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="px-6 sm:px-12 pb-8">
-      <div className="max-w-6xl mx-auto border-t border-rule pt-6 flex flex-col sm:flex-row gap-2 sm:gap-6 text-[12px] text-muted">
-        <span>Free for personal use · Commercial licence required</span>
-        <span aria-hidden className="hidden sm:inline">
-          ·
-        </span>
-        <span>
-          Not regulated financial advice. Verify with HMRC or a chartered tax
-          adviser before filing.
-        </span>
-      </div>
-    </footer>
   );
 }
 

@@ -7,6 +7,8 @@
 
 import Link from "next/link";
 
+import { SiteFooter } from "@/src/components/SiteFooter";
+
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col">
@@ -37,23 +39,12 @@ export default function Home() {
             Upload your statements →
           </Link>
           <span className="font-sans uppercase tracking-[0.16em] text-[11px] text-muted">
-            Status: under construction
+            Version 1.0.0
           </span>
         </div>
       </section>
 
-      <footer className="px-6 sm:px-12 pb-8">
-        <div className="max-w-3xl mx-auto border-t border-rule pt-6 flex flex-col sm:flex-row gap-2 sm:gap-6 text-[12px] text-muted">
-          <span>Free for personal use · Commercial licence required</span>
-          <span aria-hidden className="hidden sm:inline">
-            ·
-          </span>
-          <span>
-            Not regulated financial advice. Verify with HMRC or a chartered tax
-            adviser before filing.
-          </span>
-        </div>
-      </footer>
+      <SiteFooter maxWidthClass="max-w-3xl" />
     </main>
   );
 }

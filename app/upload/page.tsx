@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { FileDropzone, type UploadedFile } from "@/src/components/FileDropzone";
+import { SiteFooter } from "@/src/components/SiteFooter";
 import {
   effectiveIncomes,
   IncomeSummary,
@@ -262,7 +263,7 @@ export default function UploadPage() {
         )}
       </div>
 
-      <Footer />
+      <SiteFooter />
     </main>
   );
 }
@@ -299,23 +300,6 @@ function ContinueButton({ enabled }: { enabled: boolean }) {
     >
       Continue to calculation →
     </Link>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="px-6 sm:px-12 pb-8">
-      <div className="max-w-4xl mx-auto border-t border-rule pt-6 flex flex-col sm:flex-row gap-2 sm:gap-6 text-[12px] text-muted">
-        <span>Free for personal use · Commercial licence required</span>
-        <span aria-hidden className="hidden sm:inline">
-          ·
-        </span>
-        <span>
-          Not regulated financial advice. Verify with HMRC or a chartered tax
-          adviser before filing.
-        </span>
-      </div>
-    </footer>
   );
 }
 
