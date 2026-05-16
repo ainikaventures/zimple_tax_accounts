@@ -17,12 +17,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AllowancesPanel } from "@/src/components/AllowancesPanel";
 import { BandBreakdownBar } from "@/src/components/BandBreakdownBar";
 import { CalculationForm } from "@/src/components/CalculationForm";
+import { SuggestionCard } from "@/src/components/SuggestionCard";
 import { TaxHeadline } from "@/src/components/TaxHeadline";
+import { gbp } from "@/src/lib/format";
 import {
   calculateTax,
   type IncomeInputs,
 } from "@/src/lib/taxCalculator";
 import { getRules } from "@/src/lib/taxRules";
+import { generateSuggestions, type Suggestion } from "@/src/lib/suggestions";
 import {
   inferIncomes,
   type ClassifiedTransaction,
@@ -45,8 +48,19 @@ const DEFAULT_INPUTS: IncomeInputs = {
   blindPersonsAllowance: false,
 };
 
+/**
+ * One active simulation — the snapshot of inputs before the user applied a
+ * suggestion plus a short label for the banner. Cleared by Revert.
+ */
+interface Simulation {
+  suggestionId: string;
+  label: string;
+  savedInputs: IncomeInputs;
+}
+
 export default function CalculatePage() {
   const [inputs, setInputs] = useState<IncomeInputs>(DEFAULT_INPUTS);
+  const [simulation, setSimulation] = useState<Simulation | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [seededFrom, setSeededFrom] = useState<
     "inputs" | "statements" | "empty"
@@ -85,7 +99,10 @@ export default function CalculatePage() {
     }
   }, [inputs, hydrated]);
 
-  const result = useMemo(() => calculateTax(inputs), [inputs]);
+  const { suggestions, baseline: result } = useMemo(
+    () => generateSuggestions(inputs),
+    [inputs],
+  );
   const rules = useMemo(
     () => getRules(inputs.taxYear ?? "2025/26"),
     [inputs.taxYear],
@@ -93,10 +110,35 @@ export default function CalculatePage() {
 
   const handleChange = useCallback(
     <K extends keyof IncomeInputs>(key: K, value: IncomeInputs[K]) => {
+      // A manual edit invalidates an active simulation — once the user has
+      // tweaked anything, the "Revert" target is stale, so drop it.
+      setSimulation(null);
       setInputs((prev) => ({ ...prev, [key]: value }));
     },
     [],
   );
+
+  const applySuggestion = useCallback(
+    (s: Suggestion) => {
+      const applied = computeApplied(s, inputs);
+      if (!applied) return;
+      // If another simulation is already active, preserve its baseline so
+      // Revert still restores all the way back rather than only one step.
+      setSimulation((prev) => ({
+        suggestionId: s.id,
+        label: applied.label,
+        savedInputs: prev?.savedInputs ?? inputs,
+      }));
+      setInputs(applied.nextInputs);
+    },
+    [inputs],
+  );
+
+  const revertSimulation = useCallback(() => {
+    if (!simulation) return;
+    setInputs(simulation.savedInputs);
+    setSimulation(null);
+  }, [simulation]);
 
   const hasIncome =
     (inputs.earnedIncome ?? 0) +
@@ -137,8 +179,13 @@ export default function CalculatePage() {
           )}
         </header>
 
-        {!hasIncome && (
-          <NoIncomePrompt />
+        {!hasIncome && <NoIncomePrompt />}
+
+        {simulation && (
+          <SimulationBanner
+            label={simulation.label}
+            onRevert={revertSimulation}
+          />
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-10 lg:gap-12">
@@ -178,10 +225,68 @@ export default function CalculatePage() {
             )}
           </section>
         </div>
+
+        {suggestions.length > 0 && hasIncome && (
+          <section className="mt-16" aria-label="Tax-saving suggestions">
+            <header className="mb-6">
+              <h2 className="font-serif font-semibold text-3xl tracking-tight text-ink">
+                Ways to reduce your tax
+              </h2>
+              <p className="mt-2 text-sm text-muted max-w-2xl">
+                Sorted by impact. Apply any suggestion to simulate the result
+                instantly; revert from the banner to restore your inputs.
+              </p>
+            </header>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {suggestions.map((s) => {
+                const applied = computeApplied(s, inputs);
+                return (
+                  <SuggestionCard
+                    key={s.id}
+                    suggestion={s}
+                    isActive={simulation?.suggestionId === s.id}
+                    onApply={applied ? () => applySuggestion(s) : undefined}
+                    applyLabel={applied?.buttonLabel}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       <Footer />
     </main>
+  );
+}
+
+function SimulationBanner({
+  label,
+  onRevert,
+}: {
+  label: string;
+  onRevert: () => void;
+}) {
+  return (
+    <div
+      className="mb-8 rounded border border-accent bg-accent/5 px-5 py-3 flex flex-wrap items-center justify-between gap-3"
+      role="status"
+      aria-live="polite"
+    >
+      <p className="text-sm text-ink">
+        <span className="text-[11px] uppercase tracking-[0.14em] text-accent mr-2">
+          Simulating
+        </span>
+        {label}
+      </p>
+      <button
+        type="button"
+        onClick={onRevert}
+        className="inline-flex items-center gap-1.5 rounded-sm border border-rule bg-paper px-3 py-1.5 text-sm hover:border-ink/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+      >
+        Revert
+      </button>
+    </div>
   );
 }
 
@@ -292,4 +397,74 @@ function annualisationFactor(spanDays: number): number {
   if (spanDays < 28) return 1;
   if (spanDays >= 365) return 1;
   return 365 / spanDays;
+}
+
+// ─── Suggestion → input-mutation mapping ───────────────────────────────────
+
+interface AppliedSuggestion {
+  /** Inputs after the change. */
+  nextInputs: IncomeInputs;
+  /** Short banner label (e.g. "£15,000 gross pension contribution"). */
+  label: string;
+  /** Button label for the card. */
+  buttonLabel: string;
+}
+
+/**
+ * Translate a suggestion into a concrete `IncomeInputs` change. Returns null
+ * for informational suggestions that have no numerical lever — those render
+ * without an Apply button. Mirrors the factory logic in
+ * src/lib/suggestions.ts so what we apply matches what the suggestion told
+ * the user it would do.
+ */
+function computeApplied(
+  s: Suggestion,
+  inputs: IncomeInputs,
+): AppliedSuggestion | null {
+  const grossIncome =
+    (inputs.earnedIncome ?? 0) +
+    (inputs.savingsIncome ?? 0) +
+    (inputs.dividendIncome ?? 0);
+  const ani =
+    grossIncome -
+    (inputs.pensionContributionsGross ?? 0) -
+    (inputs.giftAidGross ?? 0);
+
+  switch (s.id) {
+    case "pension-pa-recovery": {
+      const extra = Math.max(0, ani - 100000);
+      if (extra <= 0) return null;
+      const next = (inputs.pensionContributionsGross ?? 0) + extra;
+      return {
+        nextInputs: { ...inputs, pensionContributionsGross: next },
+        label: `additional ${gbp(extra)} gross pension contribution (total ${gbp(next)}).`,
+        buttonLabel: `Add ${gbp(extra)} pension →`,
+      };
+    }
+    case "higher-rate-pension": {
+      // Mirrors the factory: top-up to the annual allowance.
+      const rules = getRules(inputs.taxYear ?? "2025/26");
+      const cap = rules.pensionAnnualAllowance;
+      if ((inputs.pensionContributionsGross ?? 0) >= cap) return null;
+      return {
+        nextInputs: { ...inputs, pensionContributionsGross: cap },
+        label: `pension topped up to the £${cap.toLocaleString("en-GB")} annual allowance.`,
+        buttonLabel: `Max out to ${gbp(cap)} →`,
+      };
+    }
+    case "marriage-allowance": {
+      if (inputs.transfersMarriageAllowance) return null;
+      return {
+        nextInputs: {
+          ...inputs,
+          transfersMarriageAllowance: true,
+          receivesMarriageAllowance: false,
+        },
+        label: "Marriage Allowance transferred (£1,260 of PA moved to your spouse).",
+        buttonLabel: "Transfer Marriage Allowance →",
+      };
+    }
+    default:
+      return null;
+  }
 }
