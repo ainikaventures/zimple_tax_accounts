@@ -15,6 +15,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AgentSettings } from "@/src/components/AgentSettings";
 import { FileDropzone, type UploadedFile } from "@/src/components/FileDropzone";
+import {
+  PdfExtractionProgress,
+  type ExtractionProgress,
+} from "@/src/components/PdfExtractionProgress";
 import { SiteFooter } from "@/src/components/SiteFooter";
 import { TaxYearGuidance } from "@/src/components/TaxYearGuidance";
 import { UnknownsPanel } from "@/src/components/UnknownsPanel";
@@ -116,8 +120,9 @@ export default function UploadPage() {
   const [hydrated, setHydrated] = useState(false);
   const [agentConfig, setAgentConfig] = useState<AgentClientConfig | null>(null);
   const [pendingPdf, setPendingPdf] = useState<PendingPdf | null>(null);
-  const [extractStatus, setExtractStatus] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ExtractionProgress | null>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [csvFlash, setCsvFlash] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bulkPrompt, setBulkPrompt] = useState<BulkPrompt | null>(null);
 
@@ -173,6 +178,17 @@ export default function UploadPage() {
     }
     setStatements((prev) => [...prev, ...newStatements]);
     setTransactions((prev) => [...prev, ...newClassified]);
+
+    // Brief on-screen confirmation so even instant CSV imports feel
+    // acknowledged. Auto-clears after 4 seconds.
+    if (newStatements.length > 0) {
+      const total = newClassified.length;
+      const filenames = newStatements.map((s) => s.filename).join(", ");
+      setCsvFlash(
+        `Imported ${total} transaction${total === 1 ? "" : "s"} from ${filenames}.`,
+      );
+      window.setTimeout(() => setCsvFlash(null), 4000);
+    }
   }, []);
 
   const handleFiles = useCallback(
@@ -187,30 +203,48 @@ export default function UploadPage() {
 
       for (const pdf of pdfs) {
         setExtractError(null);
-        setExtractStatus(`Reading ${pdf.name}…`);
+        setProgress({
+          step: "reading",
+          filename: pdf.name,
+          startedAt: Date.now(),
+        });
         try {
           const { text, pageCount, truncated } = await extractTextFromPdf(
             pdf.file,
           );
-          setExtractStatus(null);
           if (!text.trim()) {
-            setExtractError(
-              `${pdf.name}: no text layer found — is this a scanned PDF? OCR isn't supported yet.`,
-            );
+            setProgress({
+              step: "error",
+              filename: pdf.name,
+              pageCount,
+              errorMessage: `No text layer found — is this a scanned PDF? OCR isn't supported yet.`,
+            });
             continue;
           }
           setPendingPdf({ filename: pdf.name, text, pageCount, truncated });
+          setProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  step: "awaiting-consent",
+                  pageCount,
+                  charsSent: text.length,
+                }
+              : null,
+          );
           // Only show one consent modal at a time; the remaining PDFs in
           // this batch are deliberately dropped. Most users drop one at a
           // time anyway, and chaining LLM consents would be confusing.
           break;
         } catch (err) {
-          setExtractStatus(null);
-          setExtractError(
-            err instanceof Error
-              ? `Could not read ${pdf.name}: ${err.message}`
-              : `Could not read ${pdf.name}.`,
-          );
+          setProgress({
+            step: "error",
+            filename: pdf.name,
+            errorMessage:
+              err instanceof Error
+                ? `Could not read PDF: ${err.message}`
+                : "Could not read PDF.",
+          });
         }
       }
     },
@@ -221,12 +255,29 @@ export default function UploadPage() {
     if (!pendingPdf) return;
     if (!MANAGED_MODE && !agentConfig) return;
     setExtractError(null);
-    const providerLabel = MANAGED_MODE
-      ? "Claude (hosted)"
-      : PROVIDERS[agentConfig!.activeProvider].label;
-    setExtractStatus(`Extracting transactions via ${providerLabel}…`);
+    setPendingPdf(null); // close the consent modal immediately
     const filename = pendingPdf.filename;
+    const startedAt = Date.now();
+
+    setProgress({
+      step: "extracting",
+      filename,
+      pageCount: pendingPdf.pageCount,
+      charsSent: pendingPdf.text.length,
+      charsReceived: 0,
+      transactionsStreamed: 0,
+      preview: [],
+      startedAt,
+    });
+
     let accumulated = "";
+    let lastUpdate = Date.now();
+    const countTxs = (text: string): number => {
+      const lines = text.split("\n").filter((l) => l.trim().length > 0);
+      // First line is the header; remaining lines are transactions.
+      return Math.max(0, lines.length - 1);
+    };
+
     try {
       const stream = MANAGED_MODE
         ? extractTransactionsManaged(pendingPdf.text, filename)
@@ -237,25 +288,64 @@ export default function UploadPage() {
           );
       for await (const chunk of stream) {
         accumulated += chunk;
+        // Throttle UI updates to ~4× per second to avoid re-render churn.
+        if (Date.now() - lastUpdate > 250) {
+          const lines = accumulated.split("\n").filter((l) => l.trim());
+          setProgress({
+            step: "extracting",
+            filename,
+            pageCount: pendingPdf.pageCount,
+            charsSent: pendingPdf.text.length,
+            charsReceived: accumulated.length,
+            transactionsStreamed: countTxs(accumulated),
+            preview: lines.slice(-3),
+            startedAt,
+          });
+          lastUpdate = Date.now();
+        }
       }
     } catch (err) {
-      setExtractStatus(null);
-      setExtractError(
-        err instanceof Error
-          ? `Extraction failed: ${err.message}`
-          : "Extraction failed.",
-      );
+      setProgress({
+        step: "error",
+        filename,
+        pageCount: pendingPdf.pageCount,
+        charsSent: pendingPdf.text.length,
+        errorMessage:
+          err instanceof Error
+            ? `Extraction failed: ${err.message}`
+            : "Extraction failed.",
+      });
       return;
     }
 
+    setProgress((prev) =>
+      prev
+        ? {
+            ...prev,
+            step: "parsing",
+            charsReceived: accumulated.length,
+            transactionsStreamed: countTxs(accumulated),
+            preview: accumulated.split("\n").filter((l) => l.trim()).slice(-3),
+          }
+        : null,
+    );
+
     const csv = cleanExtractedCsv(accumulated);
     if (!csv.toLowerCase().includes("date,description,amount")) {
-      setExtractStatus(null);
-      setExtractError(
-        "The model returned no recognisable CSV header. Try a different provider or model.",
-      );
+      setProgress({
+        step: "error",
+        filename,
+        pageCount: pendingPdf.pageCount,
+        charsSent: pendingPdf.text.length,
+        errorMessage:
+          "The model returned no recognisable CSV header. Try a different model or try again.",
+      });
       return;
     }
+
+    const providerLabel = MANAGED_MODE
+      ? "Claude (hosted)"
+      : PROVIDERS[agentConfig!.activeProvider].label;
 
     try {
       const { format, transactions: parsed } = parseCSV(csv);
@@ -271,23 +361,34 @@ export default function UploadPage() {
         },
       ]);
       setTransactions((prev) => [...prev, ...classified]);
-      setExtractStatus(
-        `Extracted ${classified.length} transaction${classified.length === 1 ? "" : "s"} from ${filename}.`,
-      );
-      setPendingPdf(null);
+      setProgress({
+        step: "done",
+        filename,
+        pageCount: pendingPdf.pageCount,
+        charsSent: pendingPdf.text.length,
+        charsReceived: accumulated.length,
+        transactionsStreamed: classified.length,
+        transactionCount: classified.length,
+        startedAt,
+        completedAt: Date.now(),
+      });
     } catch (err) {
-      setExtractStatus(null);
-      setExtractError(
-        err instanceof Error
-          ? `Could not parse the extracted CSV: ${err.message}`
-          : "Could not parse the extracted CSV.",
-      );
+      setProgress({
+        step: "error",
+        filename,
+        pageCount: pendingPdf.pageCount,
+        charsSent: pendingPdf.text.length,
+        errorMessage:
+          err instanceof Error
+            ? `Could not parse the extracted CSV: ${err.message}`
+            : "Could not parse the extracted CSV.",
+      });
     }
   }, [agentConfig, pendingPdf]);
 
   const cancelPdfExtraction = useCallback(() => {
     setPendingPdf(null);
-    setExtractStatus(null);
+    setProgress(null);
   }, []);
 
   const handleCategoryChange = useCallback(
@@ -406,13 +507,23 @@ export default function UploadPage() {
               />
             )
           )}
-          {extractStatus && (
+          {progress && (
+            <PdfExtractionProgress
+              progress={progress}
+              onDismiss={
+                progress.step === "done" || progress.step === "error"
+                  ? () => setProgress(null)
+                  : undefined
+              }
+            />
+          )}
+          {csvFlash && (
             <p
-              className="mt-3 text-sm text-muted"
+              className="mt-3 text-sm text-accent"
               role="status"
               aria-live="polite"
             >
-              {extractStatus}
+              ✓ {csvFlash}
             </p>
           )}
           {extractError && (

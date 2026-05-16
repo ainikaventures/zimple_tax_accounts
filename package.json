@@ -1,6 +1,6 @@
 {
   "name": "uk-tax-advisor",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "description": "Source-available UK personal income tax web app — calculation, suggestions, AI assistant, and filing-ready exports. Free for noncommercial use; commercial licence required.",
   "license": "PolyForm-Noncommercial-1.0.0",
