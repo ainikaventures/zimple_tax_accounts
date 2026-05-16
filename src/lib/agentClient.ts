@@ -17,6 +17,7 @@
 
 import {
   AGENT_MAX_TOKENS,
+  EXTRACTION_MAX_TOKENS,
   buildSystemPrompt,
   HISTORY_LIMIT,
   trimHistory,
@@ -250,6 +251,8 @@ interface StreamOpts {
   systemPrompt: string;
   history: AgentMessage[];
   message: string;
+  /** Output cap; defaults to AGENT_MAX_TOKENS when omitted. */
+  maxTokens?: number;
 }
 
 async function* streamClaude(opts: StreamOpts): AsyncGenerator<string> {
@@ -265,7 +268,7 @@ async function* streamClaude(opts: StreamOpts): AsyncGenerator<string> {
     },
     body: JSON.stringify({
       model: modelFor(opts.config, "claude"),
-      max_tokens: AGENT_MAX_TOKENS,
+      max_tokens: opts.maxTokens ?? AGENT_MAX_TOKENS,
       stream: true,
       system: opts.systemPrompt,
       messages: [
@@ -298,7 +301,7 @@ async function* streamOpenAICompatible(opts: StreamOpts & {
     },
     body: JSON.stringify({
       model: opts.model,
-      max_tokens: AGENT_MAX_TOKENS,
+      max_tokens: opts.maxTokens ?? AGENT_MAX_TOKENS,
       stream: true,
       messages: [
         { role: "system", content: opts.systemPrompt },
@@ -357,7 +360,7 @@ async function* streamGemini(opts: StreamOpts): AsyncGenerator<string> {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: opts.systemPrompt }] },
       contents,
-      generationConfig: { maxOutputTokens: AGENT_MAX_TOKENS },
+      generationConfig: { maxOutputTokens: opts.maxTokens ?? AGENT_MAX_TOKENS },
     }),
   });
   if (!response.ok) {
@@ -382,7 +385,7 @@ async function* streamOllama(opts: StreamOpts): AsyncGenerator<string> {
         ...opts.history.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: opts.message },
       ],
-      options: { num_predict: AGENT_MAX_TOKENS },
+      options: { num_predict: opts.maxTokens ?? AGENT_MAX_TOKENS },
     }),
   });
   if (!response.ok) {
@@ -407,9 +410,16 @@ export async function* streamRaw(
   systemPrompt: string,
   history: AgentMessage[],
   message: string,
+  maxTokens?: number,
 ): AsyncGenerator<string> {
   const trimmed = trimHistory(history, HISTORY_LIMIT);
-  const opts: StreamOpts = { config, systemPrompt, history: trimmed, message };
+  const opts: StreamOpts = {
+    config,
+    systemPrompt,
+    history: trimmed,
+    message,
+    maxTokens,
+  };
 
   switch (config.activeProvider) {
     case "claude":
@@ -494,7 +504,13 @@ export async function* extractTransactionsFromPdfText(
     pdfText,
     "```",
   ].join("\n");
-  yield* streamRaw(config, PDF_EXTRACTION_SYSTEM_PROMPT, [], userMessage);
+  yield* streamRaw(
+    config,
+    PDF_EXTRACTION_SYSTEM_PROMPT,
+    [],
+    userMessage,
+    EXTRACTION_MAX_TOKENS,
+  );
 }
 
 // ─── Managed mode (server-side ANTHROPIC_API_KEY) ──────────────────────────

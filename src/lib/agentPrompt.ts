@@ -37,6 +37,16 @@ export const HISTORY_LIMIT = 8;
 /** Brief: "Max tokens 1024." */
 export const AGENT_MAX_TOKENS = 1024;
 
+/**
+ * Output cap for PDF→CSV extraction. The chat agent's 1024-token ceiling
+ * is far too low for a full bank statement: one month of transactions can
+ * easily be 50+ rows, and at ~15 tokens per row a single month already
+ * approaches 1000 tokens before the header. 8192 is the current
+ * Claude 4.x default max_output_tokens and gives the model headroom for
+ * ~500 transactions before truncation.
+ */
+export const EXTRACTION_MAX_TOKENS = 8192;
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 export function trimHistory(

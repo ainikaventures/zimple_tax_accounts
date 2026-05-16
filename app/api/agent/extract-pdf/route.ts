@@ -10,7 +10,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
-import { AGENT_MAX_TOKENS } from "@/src/lib/agentPrompt";
+import { EXTRACTION_MAX_TOKENS } from "@/src/lib/agentPrompt";
 import { PDF_EXTRACTION_SYSTEM_PROMPT } from "@/src/lib/agentClient";
 
 export const runtime = "nodejs";
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       try {
         const apiStream = client.messages.stream({
           model: MODEL,
-          max_tokens: AGENT_MAX_TOKENS,
+          max_tokens: EXTRACTION_MAX_TOKENS,
           system: PDF_EXTRACTION_SYSTEM_PROMPT,
           messages: [{ role: "user", content: userMessage }],
         });
