@@ -28,6 +28,7 @@ import {
   extractTransactionsFromPdfText,
   extractTransactionsManaged,
   loadAgentConfig,
+  looksLikeCsvHeader,
   MANAGED_MODE,
   modelFor,
   PROVIDERS,
@@ -373,15 +374,11 @@ export default function UploadPage() {
     );
 
     const csv = cleanExtractedCsv(accumulated);
-    // Accept any header line that contains both "date" and "amount" as
-    // whole words — same heuristic as cleanExtractedCsv, so the guard
-    // tolerates spacing ("Date, Description, Amount"), extra columns
-    // ("Date,Description,Amount,Balance"), and different orderings.
+    // Reuse the same heuristic as cleanExtractedCsv so the guard accepts
+    // every header variant the cleaner accepts: spacing, extra columns,
+    // Lloyds-style Money In/Out, Debit/Credit Amount, Paid In/Out, etc.
     const firstLine = csv.split("\n").find((l) => l.trim().length > 0) ?? "";
-    const firstLineLc = firstLine.toLowerCase();
-    const looksLikeHeader =
-      /\bdate\b/.test(firstLineLc) && /\bamount\b/.test(firstLineLc);
-    if (!looksLikeHeader) {
+    if (!looksLikeCsvHeader(firstLine)) {
       const preview = accumulated.trim().slice(0, 160);
       setProgress({
         step: "error",

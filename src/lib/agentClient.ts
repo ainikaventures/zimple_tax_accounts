@@ -584,14 +584,31 @@ export async function* extractTransactionsManaged(
 }
 
 /**
+ * Returns true if a line looks like a bank-statement CSV header — i.e.
+ * contains the word "date" plus at least one money-flow column term.
+ *
+ * Accepts the strict prompt-conformant "Date,Description,Amount" as well
+ * as common variants the model emits when it preserves the source
+ * statement's columns: Lloyds-style "Money In / Money Out", "Debit /
+ * Credit Amount", "Paid In / Paid Out", etc. Currency-symbol suffixes
+ * like "(£)" or "(GBP)" don't affect the match.
+ *
+ * Exported so the upload page can reuse the exact same heuristic that
+ * `cleanExtractedCsv` uses to decide what to strip.
+ */
+export function looksLikeCsvHeader(line: string): boolean {
+  const lower = line.toLowerCase();
+  if (!/\bdate\b/.test(lower)) return false;
+  return /\b(amount|money\s*(in|out)|debit|credit|paid\s*(in|out)|withdrawal|deposit)\b/.test(
+    lower,
+  );
+}
+
+/**
  * Clean the LLM's output: strip code-fence markers and anything before the
  * first line that looks like a CSV header. Tolerant of common deviations:
- * spaces between columns, extra columns (Balance), capitalisation, etc.
- *
- * Heuristic: a header line is any line containing both "date" and "amount"
- * (case-insensitive, word-boundary). Everything before that is treated as
- * preamble and dropped. If no header-shaped line is found we return the
- * cleaned text as-is and let the parser report a useful error downstream.
+ * spaces between columns, extra columns (Balance), capitalisation,
+ * debit/credit pairs in place of a single Amount column.
  */
 export function cleanExtractedCsv(raw: string): string {
   let text = raw.trim();
@@ -599,10 +616,7 @@ export function cleanExtractedCsv(raw: string): string {
   text = text.replace(/^```(?:csv|CSV)?\s*\n?/i, "").replace(/\n?\s*```\s*$/i, "");
 
   const lines = text.split("\n");
-  const headerIdx = lines.findIndex((line) => {
-    const lower = line.toLowerCase();
-    return /\bdate\b/.test(lower) && /\bamount\b/.test(lower);
-  });
+  const headerIdx = lines.findIndex(looksLikeCsvHeader);
   if (headerIdx > 0) {
     text = lines.slice(headerIdx).join("\n");
   }

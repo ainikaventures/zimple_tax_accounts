@@ -226,15 +226,26 @@ function parseDate(value: string | undefined): Date | null {
 // ─── Helpers for per-format extractors ─────────────────────────────────────
 
 /**
- * Find the index of a header by case-insensitive exact match against any of
- * the given candidate names. Returns -1 when none match. Trims both sides
- * before comparing so headers from PDF-extracted CSVs ("Date, Description,
- * Amount" — with the space the model inserts after each comma) still match.
+ * Normalise a header cell for comparison: lower-case, trim, and strip a
+ * trailing currency parenthetical like " (£)" or " (GBP)". This lets the
+ * format-specific extractors match "Money In (£)" against "Money In" and
+ * "Amount (GBP)" against "Amount" without having to enumerate every
+ * currency variant in the candidate list.
+ */
+function normaliseHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "");
+}
+
+/**
+ * Find the index of a header by case-insensitive exact match against any
+ * of the given candidate names. Returns -1 when none match. Both sides
+ * are normalised first, so spacing, casing, and trailing currency
+ * suffixes ("Amount (GBP)" vs "Amount") don't matter.
  */
 function findHeader(headers: string[], candidates: string[]): number {
   for (const candidate of candidates) {
-    const lc = candidate.trim().toLowerCase();
-    const idx = headers.findIndex((h) => h.trim().toLowerCase() === lc);
+    const lc = normaliseHeader(candidate);
+    const idx = headers.findIndex((h) => normaliseHeader(h) === lc);
     if (idx >= 0) return idx;
   }
   return -1;
@@ -271,15 +282,33 @@ function rawRecord(headers: string[], cols: string[]): Record<string, string> {
  * we treat the file as a generic single-Amount-column statement.
  */
 function detectFormat(headers: string[]): BankFormat {
-  const lc = headers.map((h) => h.trim().toLowerCase());
+  // Normalise headers the same way findHeader does — strips trailing
+  // "(£)" / "(GBP)" suffixes so detection works on PDF-extracted CSVs
+  // that preserve the bank's currency-tagged column names.
+  const lc = headers.map(normaliseHeader);
 
   const hasMonzoTriple =
     lc.includes("amount") && lc.includes("name") && lc.includes("category");
   if (hasMonzoTriple) return "monzo";
 
-  if (lc.includes("amount (gbp)")) return "starling";
+  // Starling exports always include a Counter Party column — more
+  // distinctive than the currency-suffixed "Amount (GBP)" we used to
+  // grep for, which after normalisation collapses to plain "amount".
+  if (lc.includes("counter party") || lc.includes("counterparty")) {
+    return "starling";
+  }
 
-  if (lc.includes("debit amount") || lc.includes("money out")) {
+  // Lloyds-style: separate debit/credit columns under any of the names
+  // UK banks use. The model sometimes preserves these instead of
+  // collapsing to a single signed Amount column.
+  if (
+    lc.includes("debit amount") ||
+    lc.includes("credit amount") ||
+    lc.includes("money out") ||
+    lc.includes("money in") ||
+    lc.includes("paid out") ||
+    lc.includes("paid in")
+  ) {
     return "lloyds";
   }
 
@@ -355,8 +384,18 @@ function extractLloyds(headers: string[], rows: string[][]): Transaction[] {
     "Description",
     "Details",
   ]);
-  const debitIdx = findHeader(headers, ["Debit Amount", "Money Out"]);
-  const creditIdx = findHeader(headers, ["Credit Amount", "Money In"]);
+  const debitIdx = findHeader(headers, [
+    "Debit Amount",
+    "Money Out",
+    "Paid Out",
+    "Withdrawal",
+  ]);
+  const creditIdx = findHeader(headers, [
+    "Credit Amount",
+    "Money In",
+    "Paid In",
+    "Deposit",
+  ]);
   const balanceIdx = findHeader(headers, ["Balance"]);
 
   const out: Transaction[] = [];
