@@ -1,9 +1,11 @@
-/* app/page.tsx — placeholder homepage for early-sprint development.
+/* app/page.tsx — homepage / landing.
  *
- * Establishes the editorial design language (serif display headline, off-white
- * paper background, restrained burgundy accent, hairline rule) so the toolchain
- * and typography can be verified end-to-end. Replaced by real entry points
- * (upload, calculate) in later sprints. */
+ * Establishes the editorial design language (serif display headline,
+ * off-white paper background, restrained burgundy accent, hairline rule)
+ * and hands users off to the upload flow. The headline copy stays
+ * intentionally calm — this is a tax tool, not a growth funnel. */
+
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -24,15 +26,17 @@ export default function Home() {
           rules.
         </p>
         <p className="mt-4 text-base text-muted max-w-2xl">
-          Coming soon. The repository is under active construction; features
-          land progressively per the sprint plan.
+          Drop your bank statements into the upload flow to begin. Everything
+          is parsed in your browser; statements never leave the device.
         </p>
-        <div className="mt-10 flex items-center gap-3">
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
-            aria-hidden
-          />
-          <span className="font-sans uppercase tracking-[0.16em] text-[11px] text-accent">
+        <div className="mt-10 flex flex-wrap items-center gap-5">
+          <Link
+            href="/upload"
+            className="inline-flex items-center gap-2 rounded-sm bg-accent px-5 py-2.5 text-sm font-medium text-paper hover:bg-accent-deep transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+          >
+            Upload your statements →
+          </Link>
+          <span className="font-sans uppercase tracking-[0.16em] text-[11px] text-muted">
             Status: under construction
           </span>
         </div>
