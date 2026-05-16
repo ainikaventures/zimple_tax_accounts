@@ -16,6 +16,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentSettings } from "@/src/components/AgentSettings";
 import { FileDropzone, type UploadedFile } from "@/src/components/FileDropzone";
 import { SiteFooter } from "@/src/components/SiteFooter";
+import { TaxYearGuidance } from "@/src/components/TaxYearGuidance";
+import { UnknownsPanel } from "@/src/components/UnknownsPanel";
+import { detectCoverage } from "@/src/lib/taxYearCoverage";
 import {
   cleanExtractedCsv,
   extractTransactionsFromPdfText,
@@ -97,6 +100,13 @@ interface PendingPdf {
   truncated: boolean;
 }
 
+/** State for the "Apply to N other matching transactions?" banner. */
+interface BulkPrompt {
+  description: string;
+  category: TxCategory;
+  matchCount: number;
+}
+
 export default function UploadPage() {
   const [statements, setStatements] = useState<StatementMeta[]>([]);
   const [transactions, setTransactions] = useState<ClassifiedTransaction[]>([]);
@@ -107,6 +117,7 @@ export default function UploadPage() {
   const [extractStatus, setExtractStatus] = useState<string | null>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bulkPrompt, setBulkPrompt] = useState<BulkPrompt | null>(null);
 
   // Hydrate from localStorage on mount.
   useEffect(() => {
@@ -275,14 +286,42 @@ export default function UploadPage() {
 
   const handleCategoryChange = useCallback(
     (index: number, category: TxCategory) => {
-      setTransactions((prev) =>
-        prev.map((tx, i) =>
+      let description = "";
+      setTransactions((prev) => {
+        description = prev[index]?.description ?? "";
+        return prev.map((tx, i) =>
           // A manual recategorisation is an explicit confirmation, so we
           // also bump confidence to 1 — that drops the transaction out of
           // the "needs review" banner the moment the user resolves it.
           i === index ? { ...tx, category, confidence: 1 } : tx,
+        );
+      });
+      // If there are other transactions with the same description, offer
+      // to bulk-apply.
+      const others = transactions.filter(
+        (tx, i) => i !== index && tx.description === description,
+      );
+      if (others.length > 0) {
+        setBulkPrompt({
+          description,
+          category,
+          matchCount: others.length,
+        });
+      }
+    },
+    [transactions],
+  );
+
+  const handleBulkCategorise = useCallback(
+    (description: string, category: TxCategory) => {
+      setTransactions((prev) =>
+        prev.map((tx) =>
+          tx.description === description
+            ? { ...tx, category, confidence: 1 }
+            : tx,
         ),
       );
+      setBulkPrompt(null);
     },
     [],
   );
@@ -309,6 +348,7 @@ export default function UploadPage() {
     () => inferIncomes(transactions),
     [transactions],
   );
+  const coverage = useMemo(() => detectCoverage(transactions), [transactions]);
   const spanDays = useMemo(
     () => statementSpanDays(transactions),
     [transactions],
@@ -339,6 +379,10 @@ export default function UploadPage() {
             Everything is parsed in your browser; nothing leaves the page.
           </p>
         </header>
+
+        <section className="mb-8">
+          <TaxYearGuidance coverage={coverage} />
+        </section>
 
         <section className="mb-10">
           <FileDropzone onFiles={handleFiles} />
@@ -408,9 +452,28 @@ export default function UploadPage() {
             </section>
 
             <section className="mb-10">
+              <UnknownsPanel
+                transactions={transactions}
+                onBulkCategorise={handleBulkCategorise}
+              />
+            </section>
+
+            <section className="mb-10">
               <h2 className="font-serif text-2xl text-ink mb-4">
                 Transactions
               </h2>
+              {bulkPrompt && (
+                <BulkApplyBanner
+                  prompt={bulkPrompt}
+                  onApplyAll={() =>
+                    handleBulkCategorise(
+                      bulkPrompt.description,
+                      bulkPrompt.category,
+                    )
+                  }
+                  onDismiss={() => setBulkPrompt(null)}
+                />
+              )}
               <TransactionsTable
                 transactions={transactions}
                 onCategoryChange={handleCategoryChange}
@@ -441,6 +504,65 @@ export default function UploadPage() {
     </main>
   );
 }
+
+function BulkApplyBanner({
+  prompt,
+  onApplyAll,
+  onDismiss,
+}: {
+  prompt: BulkPrompt;
+  onApplyAll: () => void;
+  onDismiss: () => void;
+}) {
+  const label = CATEGORY_LABELS[prompt.category] ?? prompt.category;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-accent bg-accent/5 px-4 py-3"
+    >
+      <p className="text-sm text-ink">
+        Apply <strong>{label}</strong> to{" "}
+        <strong>{prompt.matchCount}</strong> other transaction
+        {prompt.matchCount === 1 ? "" : "s"} with the description{" "}
+        <span className="font-mono text-ink/80">
+          &ldquo;{prompt.description}&rdquo;
+        </span>
+        ?
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onApplyAll}
+          className="rounded-sm bg-accent text-paper px-3 py-1.5 text-xs font-medium hover:bg-accent-deep"
+        >
+          Apply to all {prompt.matchCount}
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-sm border border-rule bg-paper px-3 py-1.5 text-xs hover:border-ink/40"
+        >
+          Just this one
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const CATEGORY_LABELS: Record<TxCategory, string> = {
+  salary: "Salary",
+  "savings-interest": "Savings interest",
+  dividend: "Dividend",
+  "rental-income": "Rental income",
+  "self-employment-income": "Self-employment",
+  "pension-contribution": "Pension contribution",
+  "charity-donation": "Charity donation",
+  "isa-deposit": "ISA deposit",
+  transfer: "Transfer / personal help",
+  expense: "Expense",
+  unknown: "Unknown",
+};
 
 function ProviderStatus({
   config,
