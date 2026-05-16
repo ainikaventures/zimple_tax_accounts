@@ -53,6 +53,12 @@ export function CalculationForm({ inputs, onChange }: CalculationFormProps) {
       aria-label="Tax calculation inputs"
     >
       <Fieldset legend="Income (gross, annual)">
+        <p className="text-xs text-muted leading-relaxed -mt-1">
+          Enter <strong className="text-ink">gross</strong> figures (before
+          tax). If you&apos;re employed under PAYE, copy your salary from
+          your P60 / payslip — <strong className="text-ink">not</strong> the
+          net amount that lands in your bank account.
+        </p>
         <NumberField
           label="Salary, self-employment, and rental income"
           hint="The calculator sums these as non-savings non-dividend income."

@@ -31,17 +31,23 @@ export default function Home() {
           Drop your bank statements into the upload flow to begin. Everything
           is parsed in your browser; statements never leave the device.
         </p>
-        <div className="mt-10 flex flex-wrap items-center gap-5">
+        <div className="mt-10 flex flex-wrap items-center gap-3">
           <Link
             href="/upload"
             className="inline-flex items-center gap-2 rounded-sm bg-accent px-5 py-2.5 text-sm font-medium text-paper hover:bg-accent-deep transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
             Upload your statements →
           </Link>
-          <span className="font-sans uppercase tracking-[0.16em] text-[11px] text-muted">
-            Version 1.3.1
-          </span>
+          <Link
+            href="/take-home"
+            className="inline-flex items-center gap-2 rounded-sm border border-rule bg-paper px-5 py-2.5 text-sm font-medium text-ink hover:border-ink/40 transition-colors"
+          >
+            Take-home calculator →
+          </Link>
         </div>
+        <p className="mt-5 text-xs text-muted font-mono uppercase tracking-[0.16em]">
+          Version 1.4.0
+        </p>
       </section>
 
       <SiteFooter maxWidthClass="max-w-3xl" />

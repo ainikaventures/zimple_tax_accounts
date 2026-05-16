@@ -1,11 +1,13 @@
-/* src/components/PdfExtractionProgress.tsx — visible, ongoing progress UI
- * for the PDF extraction flow on /upload.
+/* src/components/PdfExtractionProgress.tsx — full-screen modal that
+ * displays during PDF→CSV extraction. Replaces the consent modal in
+ * place so the user's eye doesn't have to hunt for a hidden inline
+ * progress card after clicking "Send and extract".
  *
- * The PDF flow has three slow steps (read PDF text, stream LLM extraction,
- * parse + classify); without something to look at, the panel feels frozen
- * for 10–30 seconds. This component renders a small stepper with live
- * counters and a tailing preview of the latest CSV rows so the user can
- * see something is actually happening. */
+ * Renders an indeterminate animated bar (CSS keyframes in
+ * app/globals.css), a three-step stepper with status indicators, live
+ * counters during streaming, and a tailing CSV preview. Surfaces
+ * errors with a Try Again option that returns to consent without
+ * requiring a re-upload. */
 
 "use client";
 
@@ -39,35 +41,42 @@ export interface ExtractionProgress {
   /** Time the extraction completed, used when step = 'done'. */
   completedAt?: number;
   errorMessage?: string;
+  /** Number of extra files queued behind this one. Surfaced as
+   *  "N more PDFs queued" so users know more is coming. */
+  queueRemaining?: number;
 }
 
 interface PdfExtractionProgressProps {
   progress: ExtractionProgress;
-  onDismiss?: () => void;
+  /** Close the modal entirely. Visible when done / error. */
+  onDismiss: () => void;
+  /** Reopen the consent modal for the same PDF. Visible on error. */
+  onTryAgain?: () => void;
 }
 
 export function PdfExtractionProgress({
   progress,
   onDismiss,
+  onTryAgain,
 }: PdfExtractionProgressProps) {
   const isError = progress.step === "error";
   const isDone = progress.step === "done";
+  const isInFlight =
+    progress.step === "reading" ||
+    progress.step === "extracting" ||
+    progress.step === "parsing";
 
   return (
     <div
-      role="status"
-      aria-live="polite"
-      className={[
-        "rounded border my-4 px-5 py-4",
-        isError
-          ? "border-accent bg-accent/5"
-          : isDone
-            ? "border-rule bg-paper"
-            : "border-accent/50 bg-accent/[0.03]",
-      ].join(" ")}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pdf-extract-progress-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
     >
-      <header className="flex items-baseline justify-between gap-3 mb-3">
-        <div className="min-w-0">
+      <div className="w-full max-w-xl rounded bg-paper shadow-2xl overflow-hidden">
+        <ProgressBar isInFlight={isInFlight} isDone={isDone} isError={isError} />
+
+        <header className="px-6 py-4 border-b border-rule">
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted">
             {isError
               ? "Extraction failed"
@@ -75,39 +84,89 @@ export function PdfExtractionProgress({
                 ? "Extraction complete"
                 : "Extracting from PDF"}
           </p>
-          <p className="font-mono text-sm text-ink truncate">
-            {progress.filename}
-          </p>
-        </div>
-        {(isDone || isError) && onDismiss && (
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="text-muted hover:text-ink text-lg leading-none"
-            aria-label="Dismiss progress"
+          <h2
+            id="pdf-extract-progress-title"
+            className="mt-1 font-serif text-xl text-ink leading-tight"
           >
-            ×
-          </button>
+            {progress.filename}
+          </h2>
+          {progress.queueRemaining !== undefined &&
+            progress.queueRemaining > 0 && (
+              <p className="mt-1 text-xs text-muted">
+                {progress.queueRemaining} more PDF
+                {progress.queueRemaining === 1 ? "" : "s"} queued after this one.
+              </p>
+            )}
+        </header>
+
+        <div className="px-6 py-5">
+          {isError ? (
+            <p className="text-sm text-accent">
+              {progress.errorMessage ?? "Unknown error."}
+            </p>
+          ) : (
+            <Stepper progress={progress} />
+          )}
+
+          {progress.step === "extracting" &&
+            progress.preview &&
+            progress.preview.length > 0 && (
+              <details className="mt-4 text-xs">
+                <summary className="cursor-pointer text-muted hover:text-ink">
+                  Preview of incoming CSV
+                </summary>
+                <pre className="mt-2 max-h-32 overflow-auto rounded border border-rule bg-ink/[0.02] p-2 font-mono text-[11px] text-ink/80 whitespace-pre-wrap break-words">
+                  {progress.preview.join("\n")}
+                </pre>
+              </details>
+            )}
+        </div>
+
+        {(isDone || isError) && (
+          <footer className="px-6 py-3 border-t border-rule bg-ink/[0.02] flex items-center justify-end gap-2">
+            {isError && onTryAgain && (
+              <button
+                type="button"
+                onClick={onTryAgain}
+                className="rounded-sm border border-rule bg-paper px-4 py-2 text-sm hover:border-ink/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Try again
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded-sm bg-accent text-paper px-4 py-2 text-sm font-medium hover:bg-accent-deep focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+            >
+              {isDone ? "Done" : "Close"}
+            </button>
+          </footer>
         )}
-      </header>
+      </div>
+    </div>
+  );
+}
 
-      {isError ? (
-        <p className="text-sm text-accent">
-          {progress.errorMessage ?? "Unknown error."}
-        </p>
-      ) : (
-        <Stepper progress={progress} />
+function ProgressBar({
+  isInFlight,
+  isDone,
+  isError,
+}: {
+  isInFlight: boolean;
+  isDone: boolean;
+  isError: boolean;
+}) {
+  return (
+    <div className="h-1 w-full bg-rule overflow-hidden relative">
+      {isInFlight && (
+        <div
+          className="h-full w-1/4 bg-accent absolute top-0 left-0 animate-uta-indeterminate"
+          aria-hidden
+        />
       )}
-
-      {progress.step === "extracting" && progress.preview && progress.preview.length > 0 && (
-        <details className="mt-3 text-xs">
-          <summary className="cursor-pointer text-muted hover:text-ink">
-            Preview of incoming CSV
-          </summary>
-          <pre className="mt-2 max-h-32 overflow-auto rounded border border-rule bg-ink/[0.02] p-2 font-mono text-[11px] text-ink/80 whitespace-pre-wrap break-words">
-            {progress.preview.join("\n")}
-          </pre>
-        </details>
+      {isDone && <div className="h-full w-full bg-accent" aria-hidden />}
+      {isError && (
+        <div className="h-full w-full bg-accent-deep" aria-hidden />
       )}
     </div>
   );
@@ -118,13 +177,9 @@ function Stepper({ progress }: { progress: ExtractionProgress }) {
     if (!progress.startedAt) return 0;
     const end = progress.completedAt ?? Date.now();
     return Math.max(0, (end - progress.startedAt) / 1000);
-  }, [progress.startedAt, progress.completedAt, progress.step]);
+  }, [progress.startedAt, progress.completedAt]);
 
   const stepStatus = (id: ExtractionStep): "done" | "active" | "pending" => {
-    if (progress.step === "error") {
-      // Errors freeze the stepper at the failing step.
-      return "pending";
-    }
     const order: ExtractionStep[] = [
       "reading",
       "awaiting-consent",
@@ -140,7 +195,7 @@ function Stepper({ progress }: { progress: ExtractionProgress }) {
   };
 
   return (
-    <ol className="space-y-2 text-sm">
+    <ol className="space-y-3 text-sm">
       <Step
         status={stepStatus("reading")}
         label="Read PDF text"
@@ -152,7 +207,9 @@ function Stepper({ progress }: { progress: ExtractionProgress }) {
       />
       <Step
         status={
-          progress.step === "awaiting-consent" ? "active" : stepStatus("extracting")
+          progress.step === "awaiting-consent"
+            ? "active"
+            : stepStatus("extracting")
         }
         label={
           progress.step === "awaiting-consent"
@@ -161,9 +218,9 @@ function Stepper({ progress }: { progress: ExtractionProgress }) {
         }
         detail={
           progress.step === "extracting"
-            ? `${(progress.charsReceived ?? 0).toLocaleString()} characters received · ${progress.transactionsStreamed ?? 0} transaction${progress.transactionsStreamed === 1 ? "" : "s"} parsed so far`
+            ? `${(progress.charsReceived ?? 0).toLocaleString()} chars received · ${progress.transactionsStreamed ?? 0} transaction${progress.transactionsStreamed === 1 ? "" : "s"} so far`
             : progress.step === "awaiting-consent"
-              ? "Click 'Send and extract' in the modal."
+              ? "Click 'Send and extract' in the consent modal."
               : (progress.charsReceived ?? 0) > 0
                 ? `${(progress.charsReceived ?? 0).toLocaleString()} characters received`
                 : null

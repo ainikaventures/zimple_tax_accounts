@@ -32,3 +32,15 @@ body {
   background: var(--color-accent);
   color: var(--color-paper);
 }
+
+/* Indeterminate progress bar — used by PdfExtractionProgress while
+ * a long-running LLM extraction is in flight. */
+@keyframes uta-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+
+.animate-uta-indeterminate {
+  animation: uta-indeterminate 1.4s ease-in-out infinite;
+}
+

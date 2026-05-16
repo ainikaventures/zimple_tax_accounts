@@ -24,10 +24,7 @@ import { SuggestionCard } from "@/src/components/SuggestionCard";
 import { TaxHeadline } from "@/src/components/TaxHeadline";
 import type { ExportData } from "@/src/lib/export";
 import { gbp } from "@/src/lib/format";
-import {
-  calculateTax,
-  type IncomeInputs,
-} from "@/src/lib/taxCalculator";
+import type { IncomeInputs } from "@/src/lib/taxCalculator";
 import { getRules } from "@/src/lib/taxRules";
 import { generateSuggestions, type Suggestion } from "@/src/lib/suggestions";
 import {

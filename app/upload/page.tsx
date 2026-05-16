@@ -33,7 +33,6 @@ import {
   PROVIDERS,
   providerReady,
   type AgentClientConfig,
-  type ProviderKey,
 } from "@/src/lib/agentClient";
 import { extractTextFromPdf } from "@/src/lib/pdfExtractor";
 import {
@@ -120,6 +119,7 @@ export default function UploadPage() {
   const [hydrated, setHydrated] = useState(false);
   const [agentConfig, setAgentConfig] = useState<AgentClientConfig | null>(null);
   const [pendingPdf, setPendingPdf] = useState<PendingPdf | null>(null);
+  const [pdfQueue, setPdfQueue] = useState<File[]>([]);
   const [progress, setProgress] = useState<ExtractionProgress | null>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [csvFlash, setCsvFlash] = useState<string | null>(null);
@@ -191,65 +191,107 @@ export default function UploadPage() {
     }
   }, []);
 
+  const startReadingPdf = useCallback(
+    async (file: File, remainingAfter: number) => {
+      setExtractError(null);
+      setProgress({
+        step: "reading",
+        filename: file.name,
+        startedAt: Date.now(),
+        queueRemaining: remainingAfter,
+      });
+      try {
+        const { text, pageCount, truncated } = await extractTextFromPdf(file);
+        if (!text.trim()) {
+          setProgress({
+            step: "error",
+            filename: file.name,
+            pageCount,
+            errorMessage:
+              "No text layer found — is this a scanned PDF? OCR isn't supported yet.",
+            queueRemaining: remainingAfter,
+          });
+          return;
+        }
+        setPendingPdf({ filename: file.name, text, pageCount, truncated });
+        setProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                step: "awaiting-consent",
+                pageCount,
+                charsSent: text.length,
+              }
+            : null,
+        );
+      } catch (err) {
+        setProgress({
+          step: "error",
+          filename: file.name,
+          errorMessage:
+            err instanceof Error
+              ? `Could not read PDF: ${err.message}`
+              : "Could not read PDF.",
+          queueRemaining: remainingAfter,
+        });
+      }
+    },
+    [],
+  );
+
   const handleFiles = useCallback(
-    async (files: UploadedFile[]) => {
+    (files: UploadedFile[]) => {
       const csvs: { name: string; content: string }[] = [];
-      const pdfs: { name: string; file: File }[] = [];
+      const pdfs: File[] = [];
       for (const f of files) {
         if (f.kind === "csv") csvs.push({ name: f.name, content: f.content });
-        else pdfs.push({ name: f.name, file: f.file });
+        else pdfs.push(f.file);
       }
       if (csvs.length > 0) ingestCsv(csvs);
 
-      for (const pdf of pdfs) {
-        setExtractError(null);
-        setProgress({
-          step: "reading",
-          filename: pdf.name,
-          startedAt: Date.now(),
-        });
-        try {
-          const { text, pageCount, truncated } = await extractTextFromPdf(
-            pdf.file,
-          );
-          if (!text.trim()) {
-            setProgress({
-              step: "error",
-              filename: pdf.name,
-              pageCount,
-              errorMessage: `No text layer found — is this a scanned PDF? OCR isn't supported yet.`,
-            });
-            continue;
-          }
-          setPendingPdf({ filename: pdf.name, text, pageCount, truncated });
-          setProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  step: "awaiting-consent",
-                  pageCount,
-                  charsSent: text.length,
-                }
-              : null,
-          );
-          // Only show one consent modal at a time; the remaining PDFs in
-          // this batch are deliberately dropped. Most users drop one at a
-          // time anyway, and chaining LLM consents would be confusing.
-          break;
-        } catch (err) {
-          setProgress({
-            step: "error",
-            filename: pdf.name,
-            errorMessage:
-              err instanceof Error
-                ? `Could not read PDF: ${err.message}`
-                : "Could not read PDF.",
-          });
-        }
+      if (pdfs.length === 0) return;
+
+      // If a PDF is already being processed (consent or in-flight), just
+      // append to the queue. Otherwise start the first PDF immediately
+      // and queue the rest.
+      const alreadyBusy =
+        pendingPdf !== null ||
+        (progress !== null &&
+          progress.step !== "done" &&
+          progress.step !== "error");
+
+      if (alreadyBusy) {
+        setPdfQueue((q) => [...q, ...pdfs]);
+        return;
       }
+
+      const [first, ...rest] = pdfs;
+      setPdfQueue(rest);
+      void startReadingPdf(first, rest.length);
     },
-    [ingestCsv],
+    [ingestCsv, pendingPdf, progress, startReadingPdf],
   );
+
+  /**
+   * Whenever a PDF completes (done or error) and there are more in the
+   * queue, automatically pick up the next one. Same effect runs when the
+   * user dismisses the progress modal or cancels consent — clearing
+   * pendingPdf + progress.
+   */
+  useEffect(() => {
+    if (pdfQueue.length === 0) return;
+    if (pendingPdf !== null) return;
+    if (
+      progress !== null &&
+      progress.step !== "done" &&
+      progress.step !== "error"
+    ) {
+      return;
+    }
+    const [next, ...rest] = pdfQueue;
+    setPdfQueue(rest);
+    void startReadingPdf(next, rest.length);
+  }, [pdfQueue, pendingPdf, progress, startReadingPdf]);
 
   const confirmPdfExtraction = useCallback(async () => {
     if (!pendingPdf) return;
@@ -391,6 +433,28 @@ export default function UploadPage() {
     setProgress(null);
   }, []);
 
+  const dismissProgress = useCallback(() => {
+    setPendingPdf(null);
+    setProgress(null);
+  }, []);
+
+  const retryProgressFromError = useCallback(() => {
+    // Reopen the consent modal for the cached PDF without re-reading.
+    if (pendingPdf) {
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              step: "awaiting-consent",
+              errorMessage: undefined,
+            }
+          : null,
+      );
+      return;
+    }
+    setProgress(null);
+  }, [pendingPdf]);
+
   const handleCategoryChange = useCallback(
     (index: number, category: TxCategory) => {
       let description = "";
@@ -507,16 +571,6 @@ export default function UploadPage() {
               />
             )
           )}
-          {progress && (
-            <PdfExtractionProgress
-              progress={progress}
-              onDismiss={
-                progress.step === "done" || progress.step === "error"
-                  ? () => setProgress(null)
-                  : undefined
-              }
-            />
-          )}
           {csvFlash && (
             <p
               className="mt-3 text-sm text-accent"
@@ -610,7 +664,7 @@ export default function UploadPage() {
 
       <SiteFooter />
 
-      {pendingPdf && (
+      {pendingPdf && progress?.step === "awaiting-consent" && (
         <PdfConsentModal
           pdf={pendingPdf}
           config={agentConfig}
@@ -620,6 +674,14 @@ export default function UploadPage() {
           onCancel={cancelPdfExtraction}
           onConfirm={confirmPdfExtraction}
           onOpenSettings={() => setSettingsOpen(true)}
+        />
+      )}
+
+      {progress && progress.step !== "awaiting-consent" && (
+        <PdfExtractionProgress
+          progress={progress}
+          onDismiss={dismissProgress}
+          onTryAgain={progress.step === "error" ? retryProgressFromError : undefined}
         />
       )}
 
